@@ -22,19 +22,49 @@
   z-index: 1000;
 }
 
-.flip-all-button-container {
-  position: fixed;
-  top: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 1000;
-}
-
-.test-button-container {
+/* New styles for deck actions */
+.deck-actions {
   position: fixed;
   top: 20px;
   right: 20px;
   z-index: 1000;
+  display: flex;
+  gap: 10px;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.deck-button {
+  padding: 10px 20px;
+  background-color: #8a2be2;
+  color: white;
+  border: none;
+  border-radius: 25px;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+  transition: transform 0.2s, background-color 0.2s;
+}
+
+.deck-button:hover {
+  transform: scale(1.05);
+  background-color: #7823c9;
+}
+
+.deck-button:focus {
+  outline: none;
+}
+
+.starred-test-button {
+  background-color: #00b8d4;
+}
+
+.starred-test-button:hover {
+  background-color: #00a0b8;
 }
 
 .back-button {
@@ -53,30 +83,12 @@
   transition: transform 0.2s, background-color 0.2s;
 }
 
-.test-button {
-  padding: 10px 20px;
-  background-color: #8a2be2;
-  color: white;
-  border: none;
-  border-radius: 25px;
-  font-size: 16px;
-  font-weight: bold;
-  cursor: pointer;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-  transition: transform 0.2s, background-color 0.2s;
-}
-
 .back-button:hover {
   transform: scale(1.1);
   background-color: #f0f0f0;
 }
 
-.test-button:hover {
-  transform: scale(1.05);
-  background-color: #7823c9;
-}
-
-.back-button:focus, .test-button:focus {
+.back-button:focus {
   outline: none;
 }
 
@@ -93,4 +105,11 @@
 
 .error-container {
   color: #ff6b6b;
+}
+
+.deck-title {
+  text-align: center;
+  margin: 10px 0 20px;
+  color: white;
+  font-size: 2rem;
 } 

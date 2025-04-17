@@ -23,6 +23,7 @@ function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/deck/:deckId" element={<DeckWrapper />} />
+          <Route path="/test/all-decks" element={<TestMode deckId="all-decks" />} />
           <Route path="/test/:deckId" element={<TestModeWrapper />} />
         </Routes>
         <Footer />

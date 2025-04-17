@@ -183,4 +183,75 @@
 
 .retry-button:hover {
   background-color: #f0f0f0;
+}
+
+/* Prevent interaction with the back side when viewing front */
+.flashcard:not(.flipped) .flashcard-back {
+  pointer-events: none;
+}
+
+/* Prevent interaction with the front side when viewing back */
+.flashcard.flipped .flashcard-front {
+  pointer-events: none;
+}
+
+/* Star Button Styling */
+.star-button {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #d8d8d8;
+  transition: color 0.3s ease, transform 0.2s ease;
+  outline: none;
+  position: absolute;
+  top: 5px;
+  right: 10px;
+  z-index: 20;
+  padding: 5px;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.3);
+  backface-visibility: hidden;
+}
+
+.flashcard-front .star-button, .flashcard-back .star-button {
+  backface-visibility: hidden;
+}
+
+.flashcard-back .star-button {
+  transform: rotateY(180deg);
+}
+
+.star-button:hover {
+  transform: scale(1.2);
+}
+
+.flashcard-back .star-button:hover {
+  transform: rotateY(180deg) scale(1.2);
+}
+
+.star-button.starred {
+  color: #8a2be2;
+  text-shadow: 0 0 4px rgba(138, 43, 226, 0.5);
+}
+
+/* Style for unstarred hover state */
+.star-button:not(.starred):hover {
+  color: #cab3e9;
+}
+
+/* Starred card styles */
+.flashcard-container.starred .flashcard-front,
+.flashcard-container.starred .flashcard-back {
+  background-color: #00b8d4;
+}
+
+/* When a card is both highlighted and starred, prioritize the highlighting */
+.flashcard-container.highlighted.starred {
+  box-shadow: 0 0 25px 12px rgba(163, 73, 255, 0.95),
+              0 0 45px 18px rgba(138, 43, 226, 0.85);
 } 

@@ -1,13 +1,54 @@
+/* AGGRESSIVE FULL-WIDTH FIXES */
+html, body, #root, .App {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow-x: hidden !important;
+  box-sizing: border-box !important;
+  background-color: #1f1f1f;
+}
+
 body {
   margin: 0;
+  padding: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background-color: #1f1f1f; /* Dark gray background for the entire app */
+  color: white;
+  min-height: 100vh;
+  width: 100%;
+  overflow-x: hidden;
+}
+
+/* Ensure absolutely no horizontal overflow */
+* {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+html {
+  background-color: #1f1f1f; /* Also set on html to ensure full coverage */
 }
 
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
+}
+
+/* Ensure root div has the background color too */
+#root {
+  background-color: #1f1f1f;
+  min-height: 100vh;
+  width: 100%;
+}
+
+/* Force viewport to fill window */
+@viewport {
+  width: device-width;
+  zoom: 1.0;
 }
