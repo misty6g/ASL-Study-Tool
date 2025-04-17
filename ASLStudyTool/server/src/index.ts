@@ -71,39 +71,75 @@ const createSampleData = async () => {
 
     if (userError) throw userError;
 
-    // Create a sample deck
-    const { data: deck, error: deckError } = await supabase
-      .from('decks')
-      .insert([
-        { title: 'ASL Conversation Vocabulary', user_id: user.id }
-      ])
-      .select()
-      .single();
+    // List of vocabulary files to process
+    const vocabFiles = [
+      { filename: 'VocabularyRelatedToConversation.txt', title: 'ASL Conversation Vocabulary' },
+      { filename: 'VocabularyRelatedToLocations.txt', title: 'ASL Location Vocabulary' },
+      { filename: 'VocabularyRelatedToClass.txt', title: 'ASL Class Vocabulary' },
+      { filename: 'PronounsWithNumeralIncorporation.txt', title: 'ASL Pronouns With Numeral Incorporation' },
+      { filename: 'VocabularyRelatedToNegatingVerbs.txt', title: 'ASL Negating Verbs' },
+      { filename: 'VocabularyRelatingToDeafCulture.txt', title: 'ASL Deaf Culture Vocabulary' },
+      { filename: 'WH-Questions.txt', title: 'ASL WH-Questions' },
+      { filename: 'VocabularyRelatedToPronouns.txt', title: 'ASL Pronouns' },
+      { filename: 'VocabularyRelatingToMajors.txt', title: 'ASL Majors Vocabulary' }
+    ];
 
-    if (deckError) throw deckError;
+    // Process each vocabulary file
+    for (const vocabFile of vocabFiles) {
+      try {
+        // Create a deck for this vocabulary file
+        const { data: deck, error: deckError } = await supabase
+          .from('decks')
+          .insert([
+            { title: vocabFile.title, user_id: user.id }
+          ])
+          .select()
+          .single();
 
-    // Read the vocabulary file
-    const vocabularyFilePath = path.join(__dirname, '../../Videos/Beginning ASL 1/VocabularyRealtedtoConversation.txt');
-    const fileContent = fs.readFileSync(vocabularyFilePath, 'utf-8');
-    
-    // Parse the file content
-    const videoEntries = fileContent.split('\n')
-      .filter(line => line.trim()) // Remove empty lines
-      .map(line => {
-        const [url, answer] = line.split(',').map(item => item.trim());
-        return {
-          video_url: url,
-          answer: answer,
-          deck_id: deck.id
-        };
-      });
+        if (deckError) {
+          console.error(`Error creating deck for ${vocabFile.filename}:`, deckError.message);
+          continue;
+        }
 
-    // Insert the cards with correct answers
-    const { error: cardsError } = await supabase
-      .from('cards')
-      .insert(videoEntries);
+        // Read the vocabulary file
+        const vocabularyFilePath = path.join(__dirname, `../../Videos/Beginning ASL 1/${vocabFile.filename}`);
+        
+        try {
+          const fileContent = fs.readFileSync(vocabularyFilePath, 'utf-8');
+          
+          // Parse the file content
+          const videoEntries = fileContent.split('\n')
+            .filter(line => line.trim()) // Remove empty lines
+            .map(line => {
+              const [url, answer] = line.split(',').map(item => item.trim());
+              return {
+                video_url: url,
+                answer: answer,
+                deck_id: deck.id
+              };
+            });
 
-    if (cardsError) throw cardsError;
+          // Insert the cards with correct answers
+          if (videoEntries.length > 0) {
+            const { error: cardsError } = await supabase
+              .from('cards')
+              .insert(videoEntries);
+
+            if (cardsError) {
+              console.error(`Error inserting cards for ${vocabFile.filename}:`, cardsError.message);
+            } else {
+              console.log(`Successfully added ${videoEntries.length} cards to deck "${vocabFile.title}"`);
+            }
+          } else {
+            console.log(`No entries found in ${vocabFile.filename}`);
+          }
+        } catch (fileError: any) {
+          console.error(`Error reading ${vocabFile.filename}:`, fileError.message);
+        }
+      } catch (deckError: any) {
+        console.error(`Error processing ${vocabFile.filename}:`, deckError.message);
+      }
+    }
 
     console.log('Sample data created successfully');
   } catch (error: any) {
@@ -197,60 +233,49 @@ app.get('/api/search', async (req, res) => {
     
     console.log(`Searching for term: "${searchTerm}"`);
 
-    // Step 1: Get all cards
-    console.log('Fetching all cards...');
-    const { data: allCards, error: cardsError } = await supabase
+    // Filter cards directly in the database using ILIKE
+    const { data: matchingCards, error: cardsError } = await supabase
       .from('cards')
-      .select('*');
+      .select('*, deck_id')
+      .ilike('answer', `%${searchTerm}%`);
 
     if (cardsError) {
-      console.error('Error fetching cards:', cardsError);
+      console.error('Error searching cards:', cardsError);
       throw cardsError;
     }
     
-    console.log(`Retrieved ${allCards ? allCards.length : 0} cards`);
-    if (allCards && allCards.length > 0) {
-      console.log('Sample card:', allCards[0]);
+    console.log(`Found ${matchingCards ? matchingCards.length : 0} matching cards`);
+
+    // If no matching cards, return empty array
+    if (!matchingCards || matchingCards.length === 0) {
+      return res.json([]);
     }
 
-    // Step 2: Get all decks
-    console.log('Fetching all decks...');
-    const { data: allDecks, error: decksError } = await supabase
+    // Get unique deck IDs from the matching cards
+    const deckIds = [...new Set(matchingCards.map(card => card.deck_id))];
+    
+    // Fetch only the decks we need
+    const { data: relevantDecks, error: decksError } = await supabase
       .from('decks')
-      .select('*');
+      .select('*')
+      .in('id', deckIds);
 
     if (decksError) {
-      console.error('Error fetching decks:', decksError);
+      console.error('Error fetching relevant decks:', decksError);
       throw decksError;
     }
     
-    console.log(`Retrieved ${allDecks ? allDecks.length : 0} decks`);
-    if (allDecks && allDecks.length > 0) {
-      console.log('Sample deck:', allDecks[0]);
-    }
-
-    // Step 3: Create a map of deck IDs to deck objects for quick lookup
-    console.log('Creating decks map...');
+    // Create map of deck IDs to deck objects
     const decksMap: { [key: string]: any } = {};
-    if (allDecks) {
-      allDecks.forEach(deck => {
+    if (relevantDecks) {
+      relevantDecks.forEach(deck => {
         decksMap[deck.id] = deck;
       });
     }
-    console.log('Decks map created:', Object.keys(decksMap));
-
-    // Step 4: Filter cards based on search term and combine with deck data
-    console.log('Filtering cards and mapping to decks...');
-    const filteredCards = allCards ? allCards.filter(card => 
-      card.answer && card.answer.toLowerCase().includes(searchTerm)
-    ) : [];
     
-    console.log(`Found ${filteredCards.length} cards matching "${searchTerm}"`);
-    
-    const searchResults = filteredCards.map(card => {
+    // Map cards to include deck info
+    const searchResults = matchingCards.map(card => {
       const deckInfo = decksMap[card.deck_id] || { id: card.deck_id, title: 'Unknown Deck' };
-      console.log(`Card "${card.answer}" belongs to deck: ${deckInfo.title} (${card.deck_id})`);
-      
       return {
         id: card.id,
         answer: card.answer,
@@ -259,12 +284,8 @@ app.get('/api/search', async (req, res) => {
         deck: deckInfo
       };
     });
-
-    console.log(`Returning ${searchResults.length} search results`);
-    if (searchResults.length > 0) {
-      console.log('Sample result:', searchResults[0]);
-    }
     
+    console.log(`Returning ${searchResults.length} search results`);
     res.json(searchResults);
   } catch (error: any) {
     console.error('Error in search API:', error);

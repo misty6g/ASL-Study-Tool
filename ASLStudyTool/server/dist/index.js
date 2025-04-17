@@ -74,36 +74,72 @@ const createSampleData = () => __awaiter(void 0, void 0, void 0, function* () {
             .single();
         if (userError)
             throw userError;
-        // Create a sample deck
-        const { data: deck, error: deckError } = yield supabase
-            .from('decks')
-            .insert([
-            { title: 'ASL Conversation Vocabulary', user_id: user.id }
-        ])
-            .select()
-            .single();
-        if (deckError)
-            throw deckError;
-        // Read the vocabulary file
-        const vocabularyFilePath = path_1.default.join(__dirname, '../../Videos/Beginning ASL 1/VocabularyRealtedtoConversation.txt');
-        const fileContent = fs_1.default.readFileSync(vocabularyFilePath, 'utf-8');
-        // Parse the file content
-        const videoEntries = fileContent.split('\n')
-            .filter(line => line.trim()) // Remove empty lines
-            .map(line => {
-            const [url, answer] = line.split(',').map(item => item.trim());
-            return {
-                video_url: url,
-                answer: answer,
-                deck_id: deck.id
-            };
-        });
-        // Insert the cards with correct answers
-        const { error: cardsError } = yield supabase
-            .from('cards')
-            .insert(videoEntries);
-        if (cardsError)
-            throw cardsError;
+        // List of vocabulary files to process
+        const vocabFiles = [
+            { filename: 'VocabularyRelatedToConversation.txt', title: 'ASL Conversation Vocabulary' },
+            { filename: 'VocabularyRelatedToLocations.txt', title: 'ASL Location Vocabulary' },
+            { filename: 'VocabularyRelatedToClass.txt', title: 'ASL Class Vocabulary' },
+            { filename: 'PronounsWithNumeralIncorporation.txt', title: 'ASL Pronouns With Numeral Incorporation' },
+            { filename: 'VocabularyRelatedToNegatingVerbs.txt', title: 'ASL Negating Verbs' },
+            { filename: 'VocabularyRelatingToDeafCulture.txt', title: 'ASL Deaf Culture Vocabulary' },
+            { filename: 'WH-Questions.txt', title: 'ASL WH-Questions' },
+            { filename: 'VocabularyRelatedToPronouns.txt', title: 'ASL Pronouns' },
+            { filename: 'VocabularyRelatingToMajors.txt', title: 'ASL Majors Vocabulary' }
+        ];
+        // Process each vocabulary file
+        for (const vocabFile of vocabFiles) {
+            try {
+                // Create a deck for this vocabulary file
+                const { data: deck, error: deckError } = yield supabase
+                    .from('decks')
+                    .insert([
+                    { title: vocabFile.title, user_id: user.id }
+                ])
+                    .select()
+                    .single();
+                if (deckError) {
+                    console.error(`Error creating deck for ${vocabFile.filename}:`, deckError.message);
+                    continue;
+                }
+                // Read the vocabulary file
+                const vocabularyFilePath = path_1.default.join(__dirname, `../../Videos/Beginning ASL 1/${vocabFile.filename}`);
+                try {
+                    const fileContent = fs_1.default.readFileSync(vocabularyFilePath, 'utf-8');
+                    // Parse the file content
+                    const videoEntries = fileContent.split('\n')
+                        .filter(line => line.trim()) // Remove empty lines
+                        .map(line => {
+                        const [url, answer] = line.split(',').map(item => item.trim());
+                        return {
+                            video_url: url,
+                            answer: answer,
+                            deck_id: deck.id
+                        };
+                    });
+                    // Insert the cards with correct answers
+                    if (videoEntries.length > 0) {
+                        const { error: cardsError } = yield supabase
+                            .from('cards')
+                            .insert(videoEntries);
+                        if (cardsError) {
+                            console.error(`Error inserting cards for ${vocabFile.filename}:`, cardsError.message);
+                        }
+                        else {
+                            console.log(`Successfully added ${videoEntries.length} cards to deck "${vocabFile.title}"`);
+                        }
+                    }
+                    else {
+                        console.log(`No entries found in ${vocabFile.filename}`);
+                    }
+                }
+                catch (fileError) {
+                    console.error(`Error reading ${vocabFile.filename}:`, fileError.message);
+                }
+            }
+            catch (deckError) {
+                console.error(`Error processing ${vocabFile.filename}:`, deckError.message);
+            }
+        }
         console.log('Sample data created successfully');
     }
     catch (error) {
