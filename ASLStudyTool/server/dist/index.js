@@ -120,8 +120,6 @@ const initializeData = () => __awaiter(void 0, void 0, void 0, function* () {
         console.error('Error initializing data:', error.message);
     }
 });
-// Initialize data when server starts
-initializeData();
 // Basic health check endpoint
 app.get('/health', (req, res) => {
     res.json({ status: 'ok' });
@@ -181,8 +179,135 @@ app.get('/api/test-video', (req, res) => {
         videoUrl: 'https://www.w3schools.com/html/mov_bbb.mp4'
     });
 });
-// Start the server
-const PORT = process.env.PORT || 8080; // Currently set to 8080
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+// Search for cards by answer text
+app.get('/api/search', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a;
+    try {
+        console.log('Search API called with query:', req.query);
+        const searchTerm = (_a = req.query.term) === null || _a === void 0 ? void 0 : _a.toString().toLowerCase();
+        if (!searchTerm) {
+            console.log('No search term provided');
+            return res.status(400).json({ error: 'Search term is required' });
+        }
+        console.log(`Searching for term: "${searchTerm}"`);
+        // Step 1: Get all cards
+        console.log('Fetching all cards...');
+        const { data: allCards, error: cardsError } = yield supabase
+            .from('cards')
+            .select('*');
+        if (cardsError) {
+            console.error('Error fetching cards:', cardsError);
+            throw cardsError;
+        }
+        console.log(`Retrieved ${allCards ? allCards.length : 0} cards`);
+        if (allCards && allCards.length > 0) {
+            console.log('Sample card:', allCards[0]);
+        }
+        // Step 2: Get all decks
+        console.log('Fetching all decks...');
+        const { data: allDecks, error: decksError } = yield supabase
+            .from('decks')
+            .select('*');
+        if (decksError) {
+            console.error('Error fetching decks:', decksError);
+            throw decksError;
+        }
+        console.log(`Retrieved ${allDecks ? allDecks.length : 0} decks`);
+        if (allDecks && allDecks.length > 0) {
+            console.log('Sample deck:', allDecks[0]);
+        }
+        // Step 3: Create a map of deck IDs to deck objects for quick lookup
+        console.log('Creating decks map...');
+        const decksMap = {};
+        if (allDecks) {
+            allDecks.forEach(deck => {
+                decksMap[deck.id] = deck;
+            });
+        }
+        console.log('Decks map created:', Object.keys(decksMap));
+        // Step 4: Filter cards based on search term and combine with deck data
+        console.log('Filtering cards and mapping to decks...');
+        const filteredCards = allCards ? allCards.filter(card => card.answer && card.answer.toLowerCase().includes(searchTerm)) : [];
+        console.log(`Found ${filteredCards.length} cards matching "${searchTerm}"`);
+        const searchResults = filteredCards.map(card => {
+            const deckInfo = decksMap[card.deck_id] || { id: card.deck_id, title: 'Unknown Deck' };
+            console.log(`Card "${card.answer}" belongs to deck: ${deckInfo.title} (${card.deck_id})`);
+            return {
+                id: card.id,
+                answer: card.answer,
+                video_url: card.video_url,
+                deck_id: card.deck_id,
+                deck: deckInfo
+            };
+        });
+        console.log(`Returning ${searchResults.length} search results`);
+        if (searchResults.length > 0) {
+            console.log('Sample result:', searchResults[0]);
+        }
+        res.json(searchResults);
+    }
+    catch (error) {
+        console.error('Error in search API:', error);
+        res.status(500).json({ error: (error === null || error === void 0 ? void 0 : error.message) || 'An error occurred' });
+    }
+}));
+// Simple test search endpoint with static data
+app.get('/api/search-test', (req, res) => {
+    var _a;
+    try {
+        console.log('Search test API called with query:', req.query);
+        const searchTerm = ((_a = req.query.term) === null || _a === void 0 ? void 0 : _a.toString().toLowerCase()) || '';
+        // Static test data
+        const testData = [
+            {
+                id: '1',
+                answer: 'hello',
+                video_url: 'test.mp4',
+                deck_id: 'deck1',
+                deck: { id: 'deck1', title: 'Greetings Deck' }
+            },
+            {
+                id: '2',
+                answer: 'goodbye',
+                video_url: 'test2.mp4',
+                deck_id: 'deck1',
+                deck: { id: 'deck1', title: 'Greetings Deck' }
+            },
+            {
+                id: '3',
+                answer: 'thank you',
+                video_url: 'test3.mp4',
+                deck_id: 'deck2',
+                deck: { id: 'deck2', title: 'Polite Phrases' }
+            }
+        ];
+        const results = searchTerm ?
+            testData.filter(item => item.answer.includes(searchTerm)) :
+            testData;
+        console.log(`Test search for "${searchTerm}" found ${results.length} results`);
+        res.json(results);
+    }
+    catch (error) {
+        console.error('Error in test search:', error);
+        res.status(500).json({ error: (error === null || error === void 0 ? void 0 : error.message) || 'An error occurred' });
+    }
 });
+// Main function to start the server
+const startServer = () => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        // Initialize data first
+        yield initializeData();
+        console.log('Data initialized successfully.');
+        // Then start the server
+        const PORT = process.env.PORT || 8080;
+        app.listen(PORT, () => {
+            console.log(`Server running on port ${PORT}`);
+        });
+    }
+    catch (error) {
+        console.error('Failed to start server:', error.message);
+        process.exit(1); // Exit if server fails to start
+    }
+});
+// Start the application
+startServer();
