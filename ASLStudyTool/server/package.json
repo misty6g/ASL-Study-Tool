@@ -4,7 +4,7 @@
   "main": "dist/index.js",
   "scripts": {
     "start": "node dist/index.js",
-    "dev": "ts-node src/index.ts",
+    "dev": "nodemon --watch src --ext ts --delay 1 --exec ts-node src/index.ts",
     "build": "tsc",
     "watch": "tsc -w"
   },
@@ -23,5 +23,8 @@
     "pg": "^8.11.3",
     "ts-node": "^10.9.2",
     "typescript": "^5.4.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
   }
 }

@@ -121,9 +121,6 @@ const initializeData = async () => {
   }
 };
 
-// Initialize data when server starts
-initializeData();
-
 // Basic health check endpoint
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
@@ -187,8 +184,23 @@ app.get('/api/test-video', (req, res) => {
   });
 });
 
-// Start the server
-const PORT = process.env.PORT || 5002;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-}); 
+// Main function to start the server
+const startServer = async () => {
+  try {
+    // Initialize data first
+    await initializeData();
+    console.log('Data initialized successfully.');
+
+    // Then start the server
+    const PORT = process.env.PORT || 8080;
+    app.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
+    });
+  } catch (error: any) {
+    console.error('Failed to start server:', error.message);
+    process.exit(1); // Exit if server fails to start
+  }
+};
+
+// Start the application
+startServer(); 
