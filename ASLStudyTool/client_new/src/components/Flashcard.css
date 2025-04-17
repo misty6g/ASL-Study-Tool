@@ -1,0 +1,186 @@
+.flashcard-container {
+  width: 320px;
+  height: 240px;
+  margin: 20px;
+  perspective: 1000px;
+  position: relative;
+  transition: all 0.3s ease;
+}
+
+/* Highlight styling with purple glow */
+.flashcard-container.highlighted {
+  transform: scale(1.05);
+  box-shadow: 0 0 25px 12px rgba(163, 73, 255, 0.95),
+              0 0 45px 18px rgba(138, 43, 226, 0.85);
+  z-index: 5;
+  border-radius: 10px;
+  outline: 3px solid #c183ff;
+}
+
+.flashcard {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  transform-style: preserve-3d;
+  transition: transform 0.6s;
+  cursor: pointer;
+}
+
+.flashcard.flipped {
+  transform: rotateY(180deg);
+}
+
+.flashcard-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  text-align: center;
+  transition: transform 0.6s;
+  transform-style: preserve-3d;
+}
+
+.flashcard-front,
+.flashcard-back {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  backface-visibility: hidden;
+  border-radius: 10px;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+  background-color: cornflowerblue;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.flashcard-back {
+  transform: rotateY(180deg);
+  font-size: 24px;
+  font-weight: bold;
+}
+
+/* Back button styles */
+.back-button-container {
+  position: absolute;
+  top: -10px;
+  left: -10px;
+  z-index: 10;
+  cursor: pointer;
+}
+
+.back-button {
+  width: 40px;
+  height: 40px;
+  background-color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+  font-size: 24px;
+  font-weight: bold;
+  color: cornflowerblue;
+  transition: transform 0.2s, background-color 0.2s;
+}
+
+.back-button:hover {
+  transform: scale(1.1);
+  background-color: #f0f0f0;
+}
+
+/* New card content layout */
+.card-content {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  padding: 10px;
+  box-sizing: border-box;
+}
+
+.card-title {
+  font-weight: bold;
+  margin-bottom: 5px;
+  font-size: 18px;
+}
+
+.video-content {
+  flex: 1;
+  border-radius: 5px;
+  overflow: hidden;
+  background-color: rgba(0, 0, 0, 0.2);
+  position: relative;
+  cursor: default;
+  margin: 5px 0;
+}
+
+.answer-content {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  font-weight: bold;
+}
+
+.card-instruction {
+  font-size: 12px;
+  margin-top: 5px;
+  opacity: 0.8;
+}
+
+.video-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.3);
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  border-top-color: white;
+  animation: spin 1s ease-in-out infinite;
+  margin-bottom: 10px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.video-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.3);
+  padding: 20px;
+  text-align: center;
+}
+
+.retry-button {
+  margin-top: 10px;
+  padding: 8px 16px;
+  background-color: white;
+  color: cornflowerblue;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: background-color 0.2s;
+}
+
+.retry-button:hover {
+  background-color: #f0f0f0;
+} 
