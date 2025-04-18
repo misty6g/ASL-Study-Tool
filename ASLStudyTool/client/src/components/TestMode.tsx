@@ -63,199 +63,160 @@ const TestMode: React.FC<TestModeProps> = ({ deckId }) => {
     };
   }, [loading, loadingStarred]);
 
-  // Fetch starred cards - simplified to prioritize local data
+  // Completely rewritten card fetching logic
   useEffect(() => {
-    const fetchStarredCards = async () => {
+    // Check if cards were passed directly in the navigation state
+    if (location.state && (location.state as any).cards) {
       try {
-        console.log("TestMode: Fetching starred cards...");
+        // Get cards from state with type assertion
+        const stateCards = (location.state as any).cards;
         
-        // NEW: Check session storage first (fastest option)
-        const sessionStarred = sessionStorage.getItem('starred_card_ids');
-        if (sessionStarred) {
-          try {
-            const parsedSessionStarred = JSON.parse(sessionStarred);
-            console.log('TestMode: Using starred cards from session storage:', parsedSessionStarred);
-            setStarredCardIds(parsedSessionStarred);
-            
-            // Set test mode if needed
-            if (location.state && (location.state as any).starredOnly) {
-              console.log("TestMode: Setting test mode to starred from navigation state");
-              setTestMode('starred');
-            }
-            
-            if (location.state && (location.state as any).viewOnly) {
-              setViewOnly(true);
-            }
-            
-            // Exit early with session storage data
-            setLoadingStarred(false);
-            return;
-          } catch (err) {
-            console.error('TestMode: Error parsing session storage starred cards:', err);
-          }
-        }
+        // Ensure each card has the required properties of the Card interface
+        const passedCards: Card[] = stateCards.map((card: any) => ({
+          id: card.id,
+          video_url: card.video_url,
+          answer: card.answer,
+          deck_id: card.deck_id
+        }));
         
-        // Then check location state
+        console.log(`TestMode: Using ${passedCards.length} cards passed directly from navigation`);
+        
+        // If we're in starred mode, make sure we have starred card IDs
         if (location.state && (location.state as any).starredCardIds) {
           const passedStarredIds = (location.state as any).starredCardIds;
-          console.log('TestMode: Using starred cards passed from navigation:', passedStarredIds);
-          setStarredCardIds(passedStarredIds);
-          
-          // Set test mode if starredOnly flag is set
-          if ((location.state as any).starredOnly) {
-            console.log("TestMode: Setting test mode to starred from navigation state");
-            setTestMode('starred');
-          }
-          
-          if ((location.state as any).viewOnly) {
-            console.log("TestMode: Setting view-only mode from navigation state");
-            setViewOnly(true);
-          }
-        } 
-        // Finally check localStorage
-        else {
-          const localStarred = localStorage.getItem(LOCAL_STORAGE_STARRED_KEY);
-          if (localStarred) {
-            try {
-              const parsedStarred = JSON.parse(localStarred);
-              console.log('TestMode: Using localStorage starred cards:', parsedStarred);
-              setStarredCardIds(parsedStarred);
-              
-              // Check if we should only test starred cards
-              if (location.state) {
-                const state = location.state as any;
-                if (state.starredOnly) {
-                  console.log("TestMode: Setting test mode to starred");
-                  setTestMode('starred');
-                }
-                if (state.viewOnly) {
-                  console.log("TestMode: Setting view-only mode");
-                  setViewOnly(true);
-                }
-              }
-            } catch (parseErr) {
-              console.error('TestMode: Error parsing starred cards from localStorage:', parseErr);
-              setStarredCardIds([]);
-            }
-          } else {
-            console.log('TestMode: No starred cards found in local storage');
-            setStarredCardIds([]);
+          console.log(`TestMode: Got ${passedStarredIds.length} starred IDs from navigation`);
+          // Only set if non-empty to prevent accidental clearing
+          if (passedStarredIds && passedStarredIds.length > 0) {
+            setStarredCardIds(passedStarredIds);
           }
         }
+        
+        // If we're in starred mode, the cards are already filtered
+        if (testMode === 'starred' || (location.state as any).starredOnly) {
+          console.log(`TestMode: Already filtered for starred cards (${passedCards.length} cards)`);
+          setTestMode('starred');
+        }
+        
+        // Set view-only if specified
+        if ((location.state as any).viewOnly) {
+          setViewOnly(true);
+        }
+        
+        // Shuffle and set directly - skip all other fetching
+        const shuffledCards = shuffleArray(passedCards);
+        console.log(`TestMode: Set ${shuffledCards.length} shuffled cards for testing`);
+        setCards(shuffledCards);
+        setLoading(false);
+        return; // Exit early - we have everything we need
       } catch (err) {
-        console.error("TestMode: Error in starred card fetching logic:", err);
-        setStarredCardIds([]);
-      } finally {
-        // Always set loading to false
-        setLoadingStarred(false);
+        console.error('TestMode: Error processing cards from navigation state:', err);
+        // Continue to normal loading in case of error
       }
-    };
-
-    // Add a failsafe timeout of 3 seconds
-    const timeoutId = setTimeout(() => {
-      if (loadingStarred) {
-        console.log("TestMode: Starred cards loading timed out, forcing completion");
-        setLoadingStarred(false);
-      }
-    }, 3000);
-
-    fetchStarredCards();
+    }
     
-    return () => clearTimeout(timeoutId);
+    // Only run this if we didn't exit early above with direct cards
+    if (!location.state || !(location.state as any).cards) {
+      setLoading(true);
+      fetchCardsFromAPI();
+    }
   }, [location.state]);
 
-  useEffect(() => {
-    // Don't fetch if we don't have a deckId, starred card status is unclear, or already fetching
-    if (!deckId || loadingStarred || loading) {
-      return;
-    }
-
-    const fetchCards = async () => {
-      setLoading(true);
-      setError(null);
-      
-      // Add a timeout to prevent infinite loading
-      const fetchTimeoutId = setTimeout(() => {
-        console.error('Card fetching timed out after 8 seconds');
-        setError('Loading timed out. Please try again.');
-        setLoading(false);
-      }, 8000);
-      
-      try {
-        console.log(`TestMode: Fetching cards for deck ${deckId}, mode: ${testMode}`);
-        
-        // NEW: First try to get cards from session storage
-        let data = [];
-        const sessionCards = sessionStorage.getItem('current_deck_cards');
-        
-        if (sessionCards) {
-          try {
-            console.log('TestMode: Using cards from session storage');
-            data = JSON.parse(sessionCards);
-            console.log(`TestMode: Found ${data.length} cards in session storage`);
-          } catch (err) {
-            console.error('TestMode: Error parsing session storage cards:', err);
-            // Continue to fetch from API
-          }
+  // Separate function for API fallback (legacy path)
+  const fetchCardsFromAPI = async () => {
+    console.log('TestMode: Attempting API fetch as fallback');
+    setError(null);
+    
+    // Add a timeout to prevent infinite loading
+    const fetchTimeoutId = setTimeout(() => {
+      console.error('Card fetching timed out after 8 seconds');
+      setError('Loading timed out. Please try again.');
+      setLoading(false);
+    }, 8000);
+    
+    try {
+      // Set mode from navigation state if present
+      if (location.state) {
+        if ((location.state as any).starredOnly) {
+          console.log('TestMode: Setting starred mode from state');
+          setTestMode('starred');
         }
-        
-        // If no session data, try API
-        if (!data || data.length === 0) {
-          console.log('TestMode: No session data, falling back to API fetch');
-          
-          // SIMPLIFIED: Just use direct fetch call to the working endpoint
-          const fallbackUrl = `/api/cards/${deckId}`;
-          console.log(`TestMode: Fetching from: ${fallbackUrl}`);
-          const fetchResponse = await fetch(fallbackUrl);
-          
-          if (!fetchResponse.ok) {
-            throw new Error(`Failed to fetch cards (${fetchResponse.status})`);
-          }
-          
-          data = await fetchResponse.json();
+        if ((location.state as any).viewOnly) {
+          setViewOnly(true);
         }
-        
-        console.log(`TestMode: Total cards in deck: ${data.length}`);
-        console.log(`TestMode: Current mode: ${testMode}`);
-        console.log(`TestMode: Starred card IDs: ${JSON.stringify(starredCardIds)}`);
-
-        // Filter cards based on the testMode
-        let filteredCards = [...data];
-
-        if (testMode === 'starred') {
-          if (!starredCardIds || starredCardIds.length === 0) {
-            console.log('TestMode: No starred cards found, showing empty set');
-            setNoCardsFeedback('No starred cards found. Please star some cards and try again.');
-            filteredCards = [];
-          } else {
-            console.log(`TestMode: Filtering for ${starredCardIds.length} starred cards`);
-            filteredCards = data.filter((card: Card) => starredCardIds.includes(card.id));
-            console.log(`TestMode: Found ${filteredCards.length} starred cards in deck`);
-            
-            if (filteredCards.length === 0) {
-              setNoCardsFeedback('No starred cards found in this deck. Please star some cards and try again.');
-            }
-          }
-        }
-
-        // Shuffle the cards
-        const shuffledCards = shuffleArray(filteredCards);
-        console.log(`TestMode: Final count of cards for testing: ${shuffledCards.length}`);
-        
-        setCards(shuffledCards);
-        clearTimeout(fetchTimeoutId); // Clear the timeout since we got a response
-        setLoading(false);
-
-      } catch (error: any) {
-        console.error('TestMode: Error fetching cards:', error);
-        setError(error.message || 'Failed to load cards. Please try again.');
-        setLoading(false);
-        clearTimeout(fetchTimeoutId); // Clear the timeout since we got an error response
       }
-    };
-
-    fetchCards();
-  }, [deckId, testMode, starredCardIds, loadingStarred]);
+      
+      // Get starred card IDs first if we need them
+      let starredIds: string[] = [];
+      if (testMode === 'starred' || (location.state && (location.state as any).starredOnly)) {
+        // Try to get from state first
+        if (location.state && (location.state as any).starredCardIds) {
+          starredIds = (location.state as any).starredCardIds;
+          console.log(`TestMode: Using ${starredIds.length} starred IDs from navigation`);
+        } else {
+          // Fall back to localStorage
+          const localStarred = localStorage.getItem(LOCAL_STORAGE_STARRED_KEY);
+          if (localStarred) {
+            starredIds = JSON.parse(localStarred);
+            console.log(`TestMode: Using ${starredIds.length} starred IDs from localStorage`);
+          }
+        }
+        setStarredCardIds(starredIds);
+      }
+      
+      console.log(`TestMode: Fetching cards for deck ${deckId}`);
+      
+      // Fetch the cards
+      const apiUrl = `/api/cards/${deckId}`;
+      console.log(`TestMode: Fetching from ${apiUrl}`);
+      const response = await fetch(apiUrl);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch cards (${response.status})`);
+      }
+      
+      const rawData = await response.json();
+      
+      // Ensure proper Card type
+      const data: Card[] = rawData.map((card: any) => ({
+        id: card.id,
+        video_url: card.video_url,
+        answer: card.answer,
+        deck_id: card.deck_id
+      }));
+      
+      console.log(`TestMode: Got ${data.length} cards from API`);
+      
+      // Filter if necessary
+      let filteredCards = data;
+      if (testMode === 'starred' || (location.state && (location.state as any).starredOnly)) {
+        if (starredIds.length === 0) {
+          console.log('TestMode: No starred cards, showing empty set');
+          setNoCardsFeedback('No starred cards found. Please star some cards and try again.');
+          filteredCards = [];
+        } else {
+          filteredCards = data.filter((card: Card) => starredIds.includes(card.id));
+          console.log(`TestMode: Filtered to ${filteredCards.length} starred cards`);
+          
+          if (filteredCards.length === 0) {
+            setNoCardsFeedback('No starred cards found in this deck. Please star some cards and try again.');
+          }
+        }
+      }
+      
+      // Shuffle and set cards
+      const shuffledCards = shuffleArray(filteredCards);
+      console.log(`TestMode: Set ${shuffledCards.length} shuffled cards for testing`);
+      setCards(shuffledCards);
+      
+    } catch (error: any) {
+      console.error('TestMode: Error fetching cards:', error);
+      setError(error.message || 'Failed to load cards. Please try again.');
+    } finally {
+      clearTimeout(fetchTimeoutId);
+      setLoading(false);
+      setLoadingStarred(false); // Also mark starred as done
+    }
+  };
 
   useEffect(() => {
     if (cards.length > 0 && currentCardIndex < cards.length) {
@@ -319,29 +280,71 @@ const TestMode: React.FC<TestModeProps> = ({ deckId }) => {
     return url;
   };
 
+  // Improved helper function to check if an answer is correct, handling slash variants
+  const checkAnswer = (userInput: string, correctAnswer: string): boolean => {
+    if (!userInput || !correctAnswer) return false;
+    
+    const userInputClean = userInput.trim().toLowerCase();
+    const correctAnswerClean = correctAnswer.trim().toLowerCase();
+    
+    console.log(`Checking answer: "${userInputClean}" against "${correctAnswerClean}"`);
+    
+    // Direct match
+    if (userInputClean === correctAnswerClean) {
+      console.log("TestMode: Exact match found!");
+      return true;
+    }
+    
+    // Check for slash in the correct answer
+    if (correctAnswerClean.includes('/')) {
+      console.log("TestMode: Slash detected in answer, checking variants");
+      
+      // Split the answer by slash and check each part
+      const answerVariants = correctAnswerClean.split('/').map(part => part.trim());
+      console.log("TestMode: Answer variants:", answerVariants);
+      
+      // Check if user's answer matches any of the variants
+      for (const variant of answerVariants) {
+        if (userInputClean === variant) {
+          console.log(`TestMode: Match found with variant "${variant}"`);
+          return true;
+        }
+      }
+    }
+    
+    console.log("TestMode: No match found");
+    return false;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!submitted && cards.length > 0) {
       const currentCard = cards[currentCardIndex];
-      const isCorrect = userAnswer.trim().toLowerCase() === currentCard.answer.trim().toLowerCase();
+      
+      // Check answer using our helper function
+      const isCorrect = checkAnswer(userAnswer, currentCard.answer);
+      console.log(`Answer check result: ${isCorrect ? 'Correct' : 'Incorrect'}`);
       
       // Update results
       if (isCorrect) {
+        console.log("Marking answer as correct");
         setResults(prevResults => ({
           ...prevResults,
           correct: [...prevResults.correct, currentCard],
           userAnswers: [...prevResults.userAnswers, userAnswer]
         }));
       } else {
+        console.log("Marking answer as incorrect");
         setResults(prevResults => ({
           ...prevResults,
           incorrect: [...prevResults.incorrect, currentCard],
           userAnswers: [...prevResults.userAnswers, userAnswer]
         }));
         
-        // Auto-star incorrect answers
-        if (!starredCardIds.includes(currentCard.id)) {
+        // Only auto-star incorrect answers if we're not in starred mode
+        // (since these cards would already be starred)
+        if (testMode !== 'starred' && !starredCardIds.includes(currentCard.id)) {
           try {
             // In a real app, you'd get the actual user ID from auth
             const demoUserId = "demo-user-id"; // Hardcoded for demo
@@ -357,6 +360,8 @@ const TestMode: React.FC<TestModeProps> = ({ deckId }) => {
             await axios.post(`${process.env.REACT_APP_API_URL}/api/cards/${currentCard.id}/star`, { 
               userId: demoUserId 
             });
+            
+            console.log("Card auto-starred for review");
           } catch (err) {
             console.error("Error starring incorrect card on server:", err);
             // Already updated localStorage, so we don't need to do anything else
@@ -405,6 +410,15 @@ const TestMode: React.FC<TestModeProps> = ({ deckId }) => {
     handleBackToDeck();
   };
 
+  // Add a function to format the correct answer for display
+  const formatCorrectAnswer = (answer: string): string => {
+    if (answer.includes('/')) {
+      // If there are multiple accepted answers, format them nicely
+      return answer.split('/').map(part => part.trim()).join(' or ');
+    }
+    return answer;
+  };
+
   if (loading) {
     return (
       <div className="test-container loading">
@@ -450,27 +464,29 @@ const TestMode: React.FC<TestModeProps> = ({ deckId }) => {
         {testMode === 'starred' ? (
           <>
             <p>{noCardsFeedback || 'You don\'t have any starred cards in this deck yet. Star some cards first or try the full test.'}</p>
-            {/* Debug information */}
-            <div style={{ 
-              background: '#333', 
-              padding: '10px', 
-              borderRadius: '5px', 
-              margin: '20px 0', 
-              fontSize: '12px',
-              textAlign: 'left'
-            }}>
-              <p>Debug Info:</p>
-              <p>Starred Card IDs: {starredCardIds.length > 0 ? starredCardIds.join(', ') : 'None'}</p>
-              <p>Deck ID: {deckId}</p>
-              <p>Test Mode: {testMode}</p>
-              <p>Loading Starred: {loadingStarred ? 'true' : 'false'}</p>
-              <button onClick={() => {
-                // Check localStorage
-                const local = localStorage.getItem(LOCAL_STORAGE_STARRED_KEY);
-                console.log('localStorage starred cards:', local);
-                alert('localStorage starred cards: ' + (local || 'none'));
-              }}>Check Local Storage</button>
-            </div>
+            {/* Debug information - hidden in production */}
+            {false && (
+              <div style={{ 
+                background: '#333', 
+                padding: '10px', 
+                borderRadius: '5px', 
+                margin: '20px 0', 
+                fontSize: '12px',
+                textAlign: 'left'
+              }}>
+                <p>Debug Info:</p>
+                <p>Starred Card IDs: {starredCardIds.length > 0 ? starredCardIds.join(', ') : 'None'}</p>
+                <p>Deck ID: {deckId}</p>
+                <p>Test Mode: {testMode}</p>
+                <p>Loading Starred: {loadingStarred ? 'true' : 'false'}</p>
+                <button onClick={() => {
+                  // Check localStorage
+                  const local = localStorage.getItem(LOCAL_STORAGE_STARRED_KEY);
+                  console.log('localStorage starred cards:', local);
+                  alert('localStorage starred cards: ' + (local || 'none'));
+                }}>Check Local Storage</button>
+              </div>
+            )}
           </>
         ) : (
           <p>This deck doesn't have any cards to test with.</p>
@@ -523,12 +539,16 @@ const TestMode: React.FC<TestModeProps> = ({ deckId }) => {
         {/* Show incorrect answers in test mode */}
         {!viewOnly && results.incorrect.length > 0 && (
           <div className="incorrect-cards">
-            <h3>Incorrect Answers (Automatically Starred)</h3>
+            <h3>
+              {testMode === 'starred' ? 
+                'Incorrect Answers' : 
+                'Incorrect Answers (Automatically Starred)'}
+            </h3>
             <ul className="results-list">
               {results.incorrect.map((card, index) => (
                 <li key={card.id} className="result-item">
                   <div className="result-answer">
-                    <strong>Correct answer:</strong> {card.answer}
+                    <strong>Correct answer:</strong> {formatCorrectAnswer(card.answer)}
                   </div>
                   <div className="result-user-answer">
                     <strong>Your answer:</strong> {results.userAnswers[results.correct.length + index]}
@@ -554,7 +574,17 @@ const TestMode: React.FC<TestModeProps> = ({ deckId }) => {
   }
 
   const currentCard = cards[currentCardIndex];
-  const isCorrect = submitted && userAnswer.trim().toLowerCase() === currentCard.answer.trim().toLowerCase();
+  const isCorrect = submitted && checkAnswer(userAnswer, currentCard.answer);
+  
+  // Debug information for the current card and answer
+  if (currentCard) {
+    console.log(`Current card answer: "${currentCard.answer}"`);
+    console.log(`Contains slash: ${currentCard.answer.includes('/')}`);
+    if (currentCard.answer.includes('/')) {
+      console.log(`Variants: ${currentCard.answer.split('/').map(part => part.trim()).join(', ')}`);
+    }
+    console.log(`Formatted for display: "${formatCorrectAnswer(currentCard.answer)}"`);
+  }
   
   return (
     <div className="test-container">
@@ -610,7 +640,15 @@ const TestMode: React.FC<TestModeProps> = ({ deckId }) => {
                 id="answer"
                 type="text"
                 value={userAnswer}
-                onChange={(e) => setUserAnswer(e.target.value)}
+                onChange={(e) => {
+                  setUserAnswer(e.target.value);
+                  // Debug current input vs answer
+                  if (currentCard) {
+                    const input = e.target.value.trim().toLowerCase();
+                    const answer = currentCard.answer.trim().toLowerCase();
+                    console.log(`Current input: "${input}", Answer: "${answer}"`);
+                  }
+                }}
                 placeholder="Type your answer here"
                 autoComplete="off"
                 autoFocus
@@ -627,8 +665,9 @@ const TestMode: React.FC<TestModeProps> = ({ deckId }) => {
               {isCorrect ? 'Correct!' : 'Incorrect'}
             </h2>
             <p>
-              The correct answer is: <strong>{currentCard.answer}</strong>
-              {!isCorrect && <span className="auto-starred"> (Auto-starred for review)</span>}
+              The correct answer is: <strong>{formatCorrectAnswer(currentCard.answer)}</strong>
+              {!isCorrect && testMode !== 'starred' && !starredCardIds.includes(currentCard.id) && 
+                <span className="auto-starred"> (Auto-starred for review)</span>}
             </p>
             <button onClick={handleNextCard} className="next-btn">
               {currentCardIndex < cards.length - 1 ? 'Next Sign' : 'See Results'}

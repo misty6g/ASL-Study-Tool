@@ -300,24 +300,26 @@ const Home: React.FC = () => {
     <div className="home-container">
       <h1 className="home-title">ASL Study Decks</h1>
       
-      {/* Debug section - can be removed later */}
-      <div style={{ 
-        background: '#333', 
-        padding: '10px', 
-        borderRadius: '5px', 
-        margin: '0 0 20px 0',
-        fontSize: '12px'
-      }}>
-        <p>Starred Cards: {starredCards.length}</p>
-        <p>hasStarredCards: {hasStarredCards ? 'true' : 'false'}</p>
-        <p>Loading: {loading ? 'true' : 'false'}, Loading Starred: {loadingStarred ? 'true' : 'false'}</p>
-        <button onClick={() => {
-          // Check localStorage
-          const local = localStorage.getItem(LOCAL_STORAGE_STARRED_KEY);
-          console.log('localStorage starred cards:', local);
-          alert('localStorage starred cards: ' + (local || 'none'));
-        }}>Check Local Storage</button>
-      </div>
+      {/* Debug section - hidden in production */}
+      {false && (
+        <div style={{ 
+          background: '#333', 
+          padding: '10px', 
+          borderRadius: '5px', 
+          margin: '0 0 20px 0',
+          fontSize: '12px'
+        }}>
+          <p>Starred Cards: {starredCards.length}</p>
+          <p>hasStarredCards: {hasStarredCards ? 'true' : 'false'}</p>
+          <p>Loading: {loading ? 'true' : 'false'}, Loading Starred: {loadingStarred ? 'true' : 'false'}</p>
+          <button onClick={() => {
+            // Check localStorage
+            const local = localStorage.getItem(LOCAL_STORAGE_STARRED_KEY);
+            console.log('localStorage starred cards:', local);
+            alert('localStorage starred cards: ' + (local || 'none'));
+          }}>Check Local Storage</button>
+        </div>
+      )}
       
       <div className="search-container">
         <form onSubmit={handleSearch} className="search-form">
@@ -392,19 +394,11 @@ const Home: React.FC = () => {
       <div className="deck-grid">
         {/* Starred Cards "Deck" - only show if there are starred cards */}
         {hasStarredCards && (
-          <>
-            <div className="deck-link starred-deck-link">
-              <div className="deck-card starred-deck" onClick={viewStarredCards}>
-                <h2>Starred Cards ({starredCards.length})</h2>
-              </div>
+          <div className="deck-link starred-deck-link">
+            <div className="deck-card starred-deck" onClick={viewStarredCards}>
+              <h2>Starred Cards ({starredCards.length})</h2>
             </div>
-            
-            <div className="deck-link starred-test-link">
-              <div className="deck-card starred-test-deck" onClick={testAllStarredCards}>
-                <h2>Test All Starred</h2>
-              </div>
-            </div>
-          </>
+          </div>
         )}
         
         {/* Regular decks */}

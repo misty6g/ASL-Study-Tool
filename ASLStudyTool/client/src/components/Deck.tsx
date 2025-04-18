@@ -46,46 +46,42 @@ const Deck: React.FC<DeckProps> = ({ deckId }) => {
   useEffect(() => {
     const fetchStarredCards = async () => {
       try {
-        // First try to get from server
-        const demoUserId = "demo-user-id"; // Hardcoded for demo
-        const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/users/${demoUserId}/starred-card-ids`);
-        
-        if (response.data && response.data.cardIds && response.data.cardIds.length > 0) {
-          // Server has data, use it
-          setStarredCardIds(response.data.cardIds || []);
-        } else {
-          // If server fails, use localStorage as fallback
-          const localStarred = localStorage.getItem(LOCAL_STORAGE_STARRED_KEY);
-          if (localStarred) {
-            try {
-              const parsedStarred = JSON.parse(localStarred);
-              console.log('Using starred cards from localStorage:', parsedStarred);
-              setStarredCardIds(parsedStarred);
-            } catch (parseErr) {
-              console.error('Error parsing starred cards from localStorage:', parseErr);
-              setStarredCardIds([]);
-            }
-          } else {
-            setStarredCardIds([]);
-          }
-        }
-      } catch (err) {
-        console.error("Error fetching starred cards from server:", err);
-        
-        // Use localStorage as fallback
+        // First try to get from localStorage for immediate UI update
         const localStarred = localStorage.getItem(LOCAL_STORAGE_STARRED_KEY);
         if (localStarred) {
           try {
             const parsedStarred = JSON.parse(localStarred);
             console.log('Using starred cards from localStorage:', parsedStarred);
-            setStarredCardIds(parsedStarred);
+            // Only update if we actually have stars (prevent overwriting with empty array)
+            if (parsedStarred && parsedStarred.length > 0) {
+              setStarredCardIds(parsedStarred);
+            }
           } catch (parseErr) {
             console.error('Error parsing starred cards from localStorage:', parseErr);
-            setStarredCardIds([]);
+            // Don't set to empty here, just continue to server
           }
-        } else {
-          setStarredCardIds([]);
         }
+
+        // Then try server
+        try {
+          const demoUserId = "demo-user-id"; // Hardcoded for demo
+          const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/users/${demoUserId}/starred-card-ids`);
+          
+          if (response.data && response.data.cardIds && response.data.cardIds.length > 0) {
+            console.log('Got starred cards from server:', response.data.cardIds.length);
+            setStarredCardIds(response.data.cardIds);
+            // Always keep localStorage in sync with server
+            localStorage.setItem(LOCAL_STORAGE_STARRED_KEY, JSON.stringify(response.data.cardIds));
+          }
+          // Important: If server returns empty but localStorage has values, keep the localStorage values
+          // This prevents accidentally clearing starred cards if server times out or returns empty
+        } catch (serverErr) {
+          console.error("Error fetching starred cards from server:", serverErr);
+          // No action needed here since we already tried localStorage
+        }
+      } catch (err) {
+        console.error("Error in starred cards fetching logic:", err);
+        // Keep any existing starred cards rather than setting to empty
       } finally {
         setLoadingStarred(false);
       }
@@ -94,42 +90,78 @@ const Deck: React.FC<DeckProps> = ({ deckId }) => {
     fetchStarredCards();
   }, []);
 
-  // Function to refresh the starred cards
+  // Function to refresh the starred cards with safeguards
   const refreshStarredCards = async () => {
     try {
-      const demoUserId = "demo-user-id"; // Hardcoded for demo
       console.log('Refreshing starred cards list');
       
-      // Try server first
+      // First check if we have local state with starred cards
+      if (starredCardIds.length > 0) {
+        console.log('Current starred cards in state:', starredCardIds);
+      }
+      
+      // Check localStorage first
+      const localStarred = localStorage.getItem(LOCAL_STORAGE_STARRED_KEY);
+      let localStarredIds: string[] = [];
+      
+      if (localStarred) {
+        try {
+          localStarredIds = JSON.parse(localStarred);
+          console.log('Found', localStarredIds.length, 'starred cards in localStorage');
+        } catch (parseErr) {
+          console.error('Error parsing localStorage starred cards:', parseErr);
+        }
+      }
+      
+      // Try server 
+      const demoUserId = "demo-user-id"; // Hardcoded for demo
       try {
         const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/users/${demoUserId}/starred-card-ids`);
-        console.log('Refreshed starred cards from server:', response.data.cardIds);
-        setStarredCardIds(response.data.cardIds || []);
-        return;
+        
+        if (response.data && response.data.cardIds && response.data.cardIds.length > 0) {
+          console.log('Refreshed starred cards from server:', response.data.cardIds.length);
+          // Only update if server returns non-empty array
+          setStarredCardIds(response.data.cardIds);
+          localStorage.setItem(LOCAL_STORAGE_STARRED_KEY, JSON.stringify(response.data.cardIds));
+          return;
+        } else {
+          console.warn('Server returned empty starred cards list');
+          // If server returned empty but we have local data, keep the local data
+          if (localStarredIds.length > 0 || starredCardIds.length > 0) {
+            console.log('Using existing starred cards instead of empty server response');
+            if (localStarredIds.length > 0) {
+              setStarredCardIds(localStarredIds);
+            }
+            // No localStorage update needed here since we're keeping existing values
+            return;
+          }
+        }
       } catch (serverErr) {
         console.error("Error refreshing starred cards from server:", serverErr);
         // Fall back to localStorage if server fails
       }
       
-      // Use localStorage as fallback
-      const localStarred = localStorage.getItem(LOCAL_STORAGE_STARRED_KEY);
-      if (localStarred) {
-        try {
-          const parsedStarred = JSON.parse(localStarred);
-          console.log('Using starred cards from localStorage:', parsedStarred);
-          setStarredCardIds(parsedStarred);
-        } catch (parseErr) {
-          console.error('Error parsing starred cards from localStorage:', parseErr);
-        }
+      // If we get here and have localStorage data, use it
+      if (localStarredIds.length > 0) {
+        console.log('Using fallback starred cards from localStorage:', localStarredIds.length);
+        setStarredCardIds(localStarredIds);
       }
+      // If all else fails, keep using current state - never clear starred cards accidentally
     } catch (err) {
       console.error("Error refreshing starred cards:", err);
+      // Fail gracefully, don't change anything
     }
   };
 
   // Handle starring/unstarring cards
   const handleStarToggle = async (cardId: string, isStarred: boolean) => {
     console.log(`Toggling star for card ${cardId} to ${isStarred ? 'starred' : 'unstarred'}`);
+    
+    // Create a backup of the current starred IDs before making any changes
+    const previousStarredIds = [...starredCardIds];
+    
+    // Backup current state to a different localStorage key as a safeguard
+    localStorage.setItem('asl_study_tool_starred_cards_backup', JSON.stringify(previousStarredIds));
     
     // Update UI state immediately for responsiveness
     let newStarredIds;
@@ -357,49 +389,53 @@ const Deck: React.FC<DeckProps> = ({ deckId }) => {
   };
 
   const handleTestClick = () => {
-    console.log("Navigating to test all mode");
+    console.log("Starting test mode with all cards");
     
-    // Store current deck state in session storage for reliability
+    // Create a direct clone of cards to avoid API calls
     try {
-      sessionStorage.setItem('current_deck_cards', JSON.stringify(cards));
-      console.log(`Saved ${cards.length} cards to session storage for test mode`);
+      // Direct navigation with cards in state (avoid storage mechanisms)
+      console.log(`Directly passing ${cards.length} cards to test mode`);
+      navigate(`/test/${deckId}`, {
+        state: { 
+          testMode: 'all',
+          cards: cards,  // Pass entire card array directly
+          deckId: deckId
+        }
+      });
     } catch (err) {
-      console.error("Failed to save cards to session storage:", err);
+      console.error("Failed to start test mode:", err);
+      // Fallback to simpler state
+      navigate(`/test/${deckId}`, { state: { testMode: 'all' } });
     }
-    
-    navigate(`/test/${deckId}`, {
-      state: { 
-        testMode: 'all',
-        cardCount: cards.length
-      }
-    });
   };
 
   const handleStarredTestClick = () => {
-    // Save starred card IDs to localStorage before navigating to ensure they're available
+    console.log("Starting test mode with starred cards only");
+    
+    // Save starred card IDs to localStorage for backup
     localStorage.setItem(LOCAL_STORAGE_STARRED_KEY, JSON.stringify(starredCardIds));
-    console.log("Navigating to test starred mode with IDs:", starredCardIds);
     
-    // Also save to session storage for immediate access
     try {
-      sessionStorage.setItem('starred_card_ids', JSON.stringify(starredCardIds));
-      console.log(`Saved ${starredCardIds.length} starred IDs to session storage`);
+      // Filter starred cards before navigation to avoid processing in TestMode
+      const starredCards = cards.filter(card => starredCardIds.includes(card.id));
+      console.log(`Found ${starredCards.length} starred cards to test`);
       
-      // Also save current deck cards
-      sessionStorage.setItem('current_deck_cards', JSON.stringify(cards));
-      console.log(`Saved ${cards.length} deck cards to session storage for test mode`);
+      // Direct navigation with filtered cards in state
+      navigate(`/test/${deckId}`, { 
+        state: { 
+          starredOnly: true,
+          cards: starredCards,  // Pass already filtered cards
+          starredCardIds: starredCardIds,
+          deckId: deckId
+        } 
+      });
     } catch (err) {
-      console.error("Failed to save to session storage:", err);
+      console.error("Failed to start starred test mode:", err);
+      // Fallback to simpler state
+      navigate(`/test/${deckId}`, { 
+        state: { starredOnly: true, starredCardIds: starredCardIds }
+      });
     }
-    
-    // Pass starred IDs directly in state to avoid relying on localStorage or server fetch
-    navigate(`/test/${deckId}`, { 
-      state: { 
-        starredOnly: true, 
-        starredCardIds: starredCardIds,
-        cardCount: cards.length
-      } 
-    });
   };
 
   const handleFirstFlip = () => {
@@ -422,6 +458,36 @@ const Deck: React.FC<DeckProps> = ({ deckId }) => {
   const handleCardInteraction = (cardId: string) => {
     // Remove the highlighting when card is interacted with
     setHighlightedCardId(null);
+  };
+
+  // Add a recovery function for starred cards
+  const recoverStarredCards = () => {
+    try {
+      console.log('Attempting to recover starred cards from backup');
+      
+      // Try to get the backup
+      const backupStarred = localStorage.getItem('asl_study_tool_starred_cards_backup');
+      if (backupStarred) {
+        const parsedBackup = JSON.parse(backupStarred);
+        if (parsedBackup && parsedBackup.length > 0) {
+          console.log(`Found backup with ${parsedBackup.length} starred cards`);
+          
+          // Restore to main storage
+          localStorage.setItem(LOCAL_STORAGE_STARRED_KEY, backupStarred);
+          
+          // Update state
+          setStarredCardIds(parsedBackup);
+          
+          console.log('Successfully recovered starred cards from backup');
+          return true;
+        }
+      }
+      console.log('No valid backup found');
+      return false;
+    } catch (err) {
+      console.error('Error recovering starred cards from backup:', err);
+      return false;
+    }
   };
 
   if (loading) return (
@@ -481,12 +547,22 @@ const Deck: React.FC<DeckProps> = ({ deckId }) => {
         </div>
       </div>
       
-      {/* Debug info */}
-      <div className="debug-info" style={{ padding: "10px", background: "#333", margin: "10px", borderRadius: "5px", fontSize: "12px" }}>
-        <p>Starred IDs: {starredCardIds.length > 0 ? starredCardIds.join(', ') : 'None'}</p>
-        <p>Loading Starred: {loadingStarred ? 'Yes' : 'No'}</p>
-        <p>Deck Cards: {cards.length}</p>
-      </div>
+      {/* Debug info - hidden in production */}
+      {false && (
+        <div className="debug-info" style={{ padding: "10px", background: "#333", margin: "10px", borderRadius: "5px", fontSize: "12px" }}>
+          <p>Starred IDs: {starredCardIds.length > 0 ? starredCardIds.join(', ') : 'None'}</p>
+          <p>Loading Starred: {loadingStarred ? 'Yes' : 'No'}</p>
+          <p>Deck Cards: {cards.length}</p>
+          <div style={{ display: "flex", gap: "10px", marginTop: "5px" }}>
+            <button onClick={refreshStarredCards} style={{ padding: "5px", fontSize: "12px" }}>
+              Refresh Stars
+            </button>
+            <button onClick={recoverStarredCards} style={{ padding: "5px", fontSize: "12px", background: "#664646", color: "white" }}>
+              Recover Starred
+            </button>
+          </div>
+        </div>
+      )}
       
       <div className="cards-grid">
         {visibleCards.map((card, index) => {
