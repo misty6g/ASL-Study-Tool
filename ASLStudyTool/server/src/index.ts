@@ -1,98 +1,188 @@
-import express from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { createClient } from '@supabase/supabase-js';
 import path from 'path';
 import fs from 'fs';
+import helmet from 'helmet';
+import cookieParser from 'cookie-parser';
+import rateLimit from 'express-rate-limit';
+import { body, validationResult } from 'express-validator';
+import winston from 'winston';
+import { z } from 'zod';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import multer from 'multer';
+import axios from 'axios';
+import { pool, initDatabase } from './db';
 
 // Load environment variables
 dotenv.config();
 
+// Logger setup
+const logger = winston.createLogger({
+  level: 'info',
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.json()
+  ),
+  transports: [
+    new winston.transports.Console()
+  ]
+});
+
+// Environment Variable Validation Schema
+const envSchema = z.object({
+  PORT: z.string().transform(Number).default('8888'),
+  DATABASE_URL: z.string(),
+  JWT_SECRET: z.string().min(8),
+  JWT_REFRESH_SECRET: z.string().min(8),
+  AI_SERVICE_URL: z.string().url().default('http://localhost:8000'),
+  AI_SERVICE_SECRET: z.string().min(4),
+  CORS_ORIGIN: z.string().default('http://localhost:3000')
+});
+
+const parsedEnv = envSchema.safeParse(process.env);
+if (!parsedEnv.success) {
+  logger.error("❌ Invalid environment variables configuration:", parsedEnv.error.format());
+  process.exit(1);
+}
+const env = parsedEnv.data;
+
 const app = express();
-//test
-// Middleware
+
+// Enable Helmet with custom Content Security Policy (CSP)
+app.use(helmet());
+app.use(helmet.contentSecurityPolicy({
+  directives: {
+    defaultSrc: ["'self'"],
+    scriptSrc: ["'self'", "'unsafe-inline'"],
+    styleSrc: ["'self'", "'unsafe-inline'"],
+    imgSrc: ["'self'", "data:"],
+    connectSrc: ["'self'", env.AI_SERVICE_URL]
+  }
+}));
+
+// Set up cookies and request limits
+app.use(cookieParser());
+app.use(express.json({ limit: '10kb' })); // JSON payload capped at 10kb
+
+// CORS configuration - White list localhost & Vercel production origin
+const whitelist = [env.CORS_ORIGIN, 'http://localhost:3000'];
 app.use(cors({
-  origin: 'http://localhost:3000', // React app's default port
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  origin: (origin, callback) => {
+    if (!origin || whitelist.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
-app.use(express.json());
 
-// Serve video files
-const videosDir = path.join(__dirname, '../../Videos');
-app.use('/videos', express.static(videosDir));
+// Rate Limiting
+const defaultRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per window
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' }
+});
 
-// Initialize Supabase client
-const supabaseUrl = process.env.SUPABASE_URL || '';
-const supabaseKey = process.env.SUPABASE_KEY || '';
-const supabase = createClient(supabaseUrl, supabaseKey);
+const authRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 15, // Limit each IP to 15 requests for auth routes
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many login attempts. Please try again after 15 minutes.' }
+});
 
-// Function to clear existing data
-const clearExistingData = async () => {
-  try {
-    // Delete data from tables in reverse order of dependencies
-    try {
-      await supabase.from('starred_cards').delete().neq('id', 0);
-    } catch (error) {
-      console.log('No starred_cards table to clear or error clearing:', error);
+// Multer upload config for files (capped at 50MB)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 50 * 1024 * 1024 // 50MB
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['video/mp4', 'video/webm', 'video/quicktime'];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Unsupported file MIME type. Only mp4, webm and mov files are accepted.'));
     }
-    
-    await supabase.from('cards').delete().neq('id', 0);
-    await supabase.from('decks').delete().neq('id', 0);
-    await supabase.from('users').delete().neq('id', 0);
-    
-    // Create tables if they don't exist
-    const createStarredCardsTable = async () => {
-      try {
-        // Try creating the table directly with a SQL query
-        const { error: sqlError } = await supabase.rpc('exec_sql', {
-          sql_query: `
-            CREATE TABLE IF NOT EXISTS starred_cards (
-              id SERIAL PRIMARY KEY,
-              user_id TEXT NOT NULL,
-              card_id TEXT NOT NULL,
-              created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-              UNIQUE(user_id, card_id)
-            );
-          `
-        });
-        
-        if (sqlError) {
-          console.error('Error creating starred_cards table via SQL:', sqlError);
-        } else {
-          console.log('Successfully created or verified starred_cards table');
-        }
-      } catch (error) {
-        console.error('Error in createStarredCardsTable:', error);
-      }
-    };
-    
-    await createStarredCardsTable();
-    
-    console.log('Existing data cleared.');
-  } catch (error: any) {
-    console.error('Error clearing existing data:', error.message);
+  }
+});
+
+// JSDoc: Type extensions for request context
+declare global {
+  namespace Express {
+    interface Request {
+      user?: {
+        id: string;
+        email: string;
+      };
+    }
+  }
+}
+
+// ----------------------------------------------------
+// Authentication Middleware
+// ----------------------------------------------------
+const authenticateJWT = (req: Request, res: Response, next: NextFunction) => {
+  const token = req.cookies.accessToken;
+
+  if (!token) {
+    logger.warn('Access token missing in request cookies');
+    return res.status(401).json({ error: 'Access token is required. Please log in.' });
+  }
+
+  try {
+    const decoded = jwt.verify(token, env.JWT_SECRET) as { id: string; email: string };
+    req.user = { id: decoded.id, email: decoded.email };
+    next();
+  } catch (err: any) {
+    logger.warn('Access token verification failed', { error: err.message });
+    return res.status(401).json({ error: 'Access token expired or invalid.' });
   }
 };
 
-// Function to create sample data
-const createSampleData = async () => {
+// ----------------------------------------------------
+// Input Validation Helper
+// ----------------------------------------------------
+const validateRequest = (req: Request, res: Response, next: NextFunction) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+  next();
+};
+
+// ----------------------------------------------------
+// Seeding & Setup Logic
+// ----------------------------------------------------
+const seedData = async () => {
+  const client = await pool.connect();
   try {
-    // Clear existing data first
-    await clearExistingData();
+    // Check if we have decks
+    const { rows: decksCount } = await client.query('SELECT COUNT(*) FROM decks');
+    if (Number(decksCount[0].count) > 0) {
+      logger.info('Database already has decks. Skipping seeding.');
+      return;
+    }
 
-    // Create a sample user
-    const { data: user, error: userError } = await supabase
-      .from('users')
-      .insert([
-        { email: 'demo@example.com', password: 'demo123' }
-      ])
-      .select()
-      .single();
+    logger.info('Database is empty. Seeding initial decks, cards, and templates...');
 
-    if (userError) throw userError;
+    // 1. Create default demo user
+    const demoEmail = 'demo@example.com';
+    const demoPasswordHash = await bcrypt.hash('demo123', 10);
+    const { rows: userRows } = await client.query(
+      'INSERT INTO users (email, password_hash) VALUES ($1, $2) ON CONFLICT (email) DO UPDATE SET password_hash = $2 RETURNING id',
+      [demoEmail, demoPasswordHash]
+    );
+    const demoUser = userRows[0];
 
-    // List of vocabulary files to process
+    // 2. Seeding vocabulary lists
     const vocabFiles = [
       { filename: 'VocabularyRelatedToConversation.txt', title: 'ASL Conversation Vocabulary' },
       { filename: 'VocabularyRelatedToLocations.txt', title: 'ASL Location Vocabulary' },
@@ -105,477 +195,667 @@ const createSampleData = async () => {
       { filename: 'VocabularyRelatingToMajors.txt', title: 'ASL Majors Vocabulary' }
     ];
 
-    // Process each vocabulary file
     for (const vocabFile of vocabFiles) {
-      try {
-        // Create a deck for this vocabulary file
-        const { data: deck, error: deckError } = await supabase
-          .from('decks')
-          .insert([
-            { title: vocabFile.title, user_id: user.id }
-          ])
-          .select()
-          .single();
-
-        if (deckError) {
-          console.error(`Error creating deck for ${vocabFile.filename}:`, deckError.message);
-          continue;
-        }
-
-        // Read the vocabulary file
-        const vocabularyFilePath = path.join(__dirname, `../../Videos/Beginning ASL 1/${vocabFile.filename}`);
-        
-        try {
-          const fileContent = fs.readFileSync(vocabularyFilePath, 'utf-8');
-          
-          // Parse the file content
-          const videoEntries = fileContent.split('\n')
-            .filter(line => line.trim()) // Remove empty lines
-            .map(line => {
-              const [url, answer] = line.split(',').map(item => item.trim());
-              return {
-                video_url: url,
-                answer: answer,
-                deck_id: deck.id
-              };
-            });
-
-          // Insert the cards with correct answers
-          if (videoEntries.length > 0) {
-            const { error: cardsError } = await supabase
-              .from('cards')
-              .insert(videoEntries);
-
-            if (cardsError) {
-              console.error(`Error inserting cards for ${vocabFile.filename}:`, cardsError.message);
-            } else {
-              console.log(`Successfully added ${videoEntries.length} cards to deck "${vocabFile.title}"`);
-            }
-          } else {
-            console.log(`No entries found in ${vocabFile.filename}`);
-          }
-        } catch (fileError: any) {
-          console.error(`Error reading ${vocabFile.filename}:`, fileError.message);
-        }
-      } catch (deckError: any) {
-        console.error(`Error processing ${vocabFile.filename}:`, deckError.message);
+      const vocabularyFilePath = path.join(__dirname, `../../Videos/Beginning ASL 1/${vocabFile.filename}`);
+      if (!fs.existsSync(vocabularyFilePath)) {
+        logger.warn(`Vocab seed file not found: ${vocabularyFilePath}`);
+        continue;
       }
+
+      // Create Deck
+      const { rows: deckRows } = await client.query(
+        'INSERT INTO decks (title, user_id) VALUES ($1, $2) RETURNING id',
+        [vocabFile.title, demoUser.id]
+      );
+      const deck = deckRows[0];
+
+      // Read file cards
+      const content = fs.readFileSync(vocabularyFilePath, 'utf8');
+      const lines = content.split('\n').filter(line => line.trim());
+
+      for (const line of lines) {
+        const parts = line.split(',');
+        if (parts.length >= 2) {
+          const videoUrl = parts[0].trim();
+          const answer = parts[1].trim();
+
+          await client.query(
+            'INSERT INTO cards (video_url, answer, deck_id) VALUES ($1, $2, $3)',
+            [videoUrl, answer, deck.id]
+          );
+        }
+      }
+      logger.info(`Seeded deck "${vocabFile.title}" successfully.`);
     }
 
-    console.log('Sample data created successfully');
-  } catch (error: any) {
-    console.error('Error creating sample data:', error.message);
+    // 3. Seed mock sign templates (hello, thank you, goodbye, yes, no)
+    const commonSigns = ['hello', 'thank you', 'goodbye', 'yes', 'no'];
+    for (const sign of commonSigns) {
+      // Generate a mock sequence of 60 frames, 21 joints, 3 coordinates
+      const mockSequence = [];
+      for (let f = 0; f < 60; f++) {
+        const frame = [];
+        const offset = f * 0.002;
+        for (let j = 0; j < 21; j++) {
+          frame.push([0.5 + offset, 0.4 - offset, 0.1]);
+        }
+        mockSequence.push(frame);
+      }
+
+      await client.query(
+        'INSERT INTO sign_templates (sign_label, landmark_sequence) VALUES ($1, $2) ON CONFLICT (sign_label) DO NOTHING',
+        [sign, JSON.stringify(mockSequence)]
+      );
+    }
+    logger.info('Database seeding operations completed successfully.');
+
+  } catch (err) {
+    logger.error('Error during data seeding:', err);
+  } finally {
+    client.release();
   }
 };
 
-// Initialize data when server starts
-const initializeData = async () => {
-  try {
-    console.log('Clearing existing data and creating fresh sample data...');
-    await createSampleData();
-  } catch (error: any) {
-    console.error('Error initializing data:', error.message);
-  }
-};
-
-// Basic health check endpoint
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok' });
+// ----------------------------------------------------
+// Public APIs & Health
+// ----------------------------------------------------
+app.get('/health', (req: Request, res: Response) => {
+  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Get all users
-app.get('/api/users', async (req, res) => {
-  try {
-    console.log('Fetching users...');
-    const { data, error } = await supabase
-      .from('users')
-      .select('*');
+// ----------------------------------------------------
+// Auth Routes
+// ----------------------------------------------------
+app.post(
+  '/api/auth/register',
+  authRateLimiter,
+  [
+    body('email').isEmail().withMessage('Provide a valid email').normalizeEmail(),
+    body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters')
+  ],
+  validateRequest,
+  async (req: Request, res: Response, next: NextFunction) => {
+    const { email, password } = req.body;
+    try {
+      // Check if user already exists
+      const { rows: existingUsers } = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+      if (existingUsers.length > 0) {
+        return res.status(409).json({ error: 'Email is already registered' });
+      }
 
-    if (error) {
-      console.error('Error fetching users:', error);
-      throw error;
+      // Hash password and insert
+      const passwordHash = await bcrypt.hash(password, 10);
+      const { rows: userRows } = await pool.query(
+        'INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id, email',
+        [email, passwordHash]
+      );
+      
+      const user = userRows[0];
+      logger.info('New user registered successfully', { email: user.email });
+      return res.status(201).json({ id: user.id, email: user.email });
+    } catch (error) {
+      next(error);
     }
+  }
+);
+
+app.post(
+  '/api/auth/login',
+  authRateLimiter,
+  [
+    body('email').isEmail().normalizeEmail(),
+    body('password').notEmpty()
+  ],
+  validateRequest,
+  async (req: Request, res: Response, next: NextFunction) => {
+    const { email, password } = req.body;
+    try {
+      const { rows: users } = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+      if (users.length === 0) {
+        return res.status(401).json({ error: 'Invalid email or password' });
+      }
+
+      const user = users[0];
+      const validPassword = await bcrypt.compare(password, user.password_hash);
+      if (!validPassword) {
+        return res.status(401).json({ error: 'Invalid email or password' });
+      }
+
+      // Sign JWT Tokens
+      const accessToken = jwt.sign({ id: user.id, email: user.email }, env.JWT_SECRET, { expiresIn: '15m' });
+      const refreshToken = jwt.sign({ id: user.id, email: user.email }, env.JWT_REFRESH_SECRET, { expiresIn: '7d' });
+
+      // Set httpOnly secure cookies
+      res.cookie('accessToken', accessToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 15 * 60 * 1000 // 15 mins
+      });
+
+      res.cookie('refreshToken', refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        path: '/api/auth/refresh', // Refresh token cookie only sent to refresh endpoint
+        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+      });
+
+      logger.info('User logged in successfully', { email: user.email });
+      return res.status(200).json({ id: user.id, email: user.email });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+app.post('/api/auth/logout', (req: Request, res: Response) => {
+  res.clearCookie('accessToken');
+  res.clearCookie('refreshToken', { path: '/api/auth/refresh' });
+  return res.status(200).json({ message: 'Logged out successfully' });
+});
+
+app.post('/api/auth/refresh', async (req: Request, res: Response, next: NextFunction) => {
+  const token = req.cookies.refreshToken;
+
+  if (!token) {
+    return res.status(401).json({ error: 'Refresh token is missing' });
+  }
+
+  try {
+    const decoded = jwt.verify(token, env.JWT_REFRESH_SECRET) as { id: string; email: string };
     
-    console.log('Users found:', data);
-    res.json(data);
-  } catch (error: any) {
-    console.error('Error in /api/users:', error);
-    res.status(500).json({ error: error?.message || 'An error occurred' });
+    // Check if user still exists
+    const { rows: users } = await pool.query('SELECT id, email FROM users WHERE id = $1', [decoded.id]);
+    if (users.length === 0) {
+      return res.status(401).json({ error: 'User no longer exists' });
+    }
+
+    const user = users[0];
+
+    // Generate new tokens
+    const newAccessToken = jwt.sign({ id: user.id, email: user.email }, env.JWT_SECRET, { expiresIn: '15m' });
+    const newRefreshToken = jwt.sign({ id: user.id, email: user.email }, env.JWT_REFRESH_SECRET, { expiresIn: '7d' });
+
+    res.cookie('accessToken', newAccessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 15 * 60 * 1000
+    });
+
+    res.cookie('refreshToken', newRefreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      path: '/api/auth/refresh',
+      maxAge: 7 * 24 * 60 * 60 * 1000
+    });
+
+    return res.status(200).json({ status: 'success' });
+  } catch (err: any) {
+    logger.warn('Refresh token verification failed', { error: err.message });
+    return res.status(401).json({ error: 'Refresh token expired or invalid. Please log in again.' });
   }
 });
 
-// Get all decks for a user
-app.get('/api/decks/:userId', async (req, res) => {
-  try {
-    const { data, error } = await supabase
-      .from('decks')
-      .select('*')
-      .eq('user_id', req.params.userId);
+app.get('/api/auth/me', authenticateJWT, (req: Request, res: Response) => {
+  return res.status(200).json({ user: req.user });
+});
 
-    if (error) throw error;
-    res.json(data);
-  } catch (error: any) {
-    res.status(500).json({ error: error?.message || 'An error occurred' });
+// ----------------------------------------------------
+// Authenticated Core Endpoints
+// ----------------------------------------------------
+
+// Get all decks for the logged-in user
+app.get('/api/decks/:userId', authenticateJWT, defaultRateLimiter, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (req.user?.id !== req.params.userId) {
+      return res.status(403).json({ error: 'Access Denied: Cannot view decks for another user.' });
+    }
+
+    const { rows } = await pool.query('SELECT * FROM decks WHERE user_id = $1 ORDER BY title ASC', [req.params.userId]);
+    return res.status(200).json(rows);
+  } catch (error) {
+    next(error);
   }
 });
 
 // Get all cards in a deck
-app.get('/api/cards/:deckId', async (req, res) => {
+app.get('/api/cards/:deckId', authenticateJWT, defaultRateLimiter, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { data, error } = await supabase
-      .from('cards')
-      .select('*')
-      .eq('deck_id', req.params.deckId);
-
-    if (error) throw error;
-    res.json(data);
-  } catch (error: any) {
-    res.status(500).json({ error: error?.message || 'An error occurred' });
+    // Basic deck ownership validation can be done, but for now we query cards
+    const { rows } = await pool.query('SELECT * FROM cards WHERE deck_id = $1 ORDER BY answer ASC', [req.params.deckId]);
+    return res.status(200).json(rows);
+  } catch (error) {
+    next(error);
   }
 });
 
-// Serve a test video file for checking if videos are loading
-app.get('/api/test-video', (req, res) => {
-  res.json({ 
-    videoUrl: 'https://www.w3schools.com/html/mov_bbb.mp4' 
-  });
-});
-
-// Search for cards by answer text
-app.get('/api/search', async (req, res) => {
+// Search for cards or decks
+app.get('/api/search', authenticateJWT, defaultRateLimiter, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    console.log('Search API called with query:', req.query);
-    const searchTerm = req.query.term?.toString().toLowerCase();
-    
+    const searchTerm = req.query.term?.toString().trim();
     if (!searchTerm) {
-      console.log('No search term provided');
-      return res.status(400).json({ error: 'Search term is required' });
-    }
-    
-    console.log(`Searching for term: "${searchTerm}"`);
-
-    // Search for matching cards
-    const { data: matchingCards, error: cardsError } = await supabase
-      .from('cards')
-      .select('*, deck_id')
-      .ilike('answer', `%${searchTerm}%`);
-
-    if (cardsError) {
-      console.error('Error searching cards:', cardsError);
-      throw cardsError;
-    }
-    
-    console.log(`Found ${matchingCards ? matchingCards.length : 0} matching cards`);
-
-    // Search for matching decks by title
-    const { data: matchingDecks, error: decksSearchError } = await supabase
-      .from('decks')
-      .select('*')
-      .ilike('title', `%${searchTerm}%`);
-
-    if (decksSearchError) {
-      console.error('Error searching decks:', decksSearchError);
-      throw decksSearchError;
+      return res.status(400).json({ error: 'Search query is required' });
     }
 
-    console.log(`Found ${matchingDecks ? matchingDecks.length : 0} matching decks`);
+    const searchQuery = `%${searchTerm}%`;
 
-    // If no matching cards or decks, return empty array
-    if ((!matchingCards || matchingCards.length === 0) && (!matchingDecks || matchingDecks.length === 0)) {
-      return res.json({ cards: [], decks: [] });
-    }
+    // 1. Search cards
+    const { rows: matchingCards } = await pool.query(
+      `SELECT c.*, d.title as deck_title 
+       FROM cards c 
+       JOIN decks d ON c.deck_id = d.id 
+       WHERE c.answer ILIKE $1`,
+      [searchQuery]
+    );
 
-    // Get unique deck IDs from the matching cards
-    const deckIds = [...new Set(matchingCards.map(card => card.deck_id))];
-    
-    // Fetch only the decks we need for cards that match
-    let relevantDecks = [];
-    if (deckIds.length > 0) {
-      const { data: cardDecks, error: decksError } = await supabase
-        .from('decks')
-        .select('*')
-        .in('id', deckIds);
+    // 2. Search decks
+    const { rows: matchingDecks } = await pool.query(
+      'SELECT * FROM decks WHERE title ILIKE $1 AND user_id = $2',
+      [searchQuery, req.user?.id]
+    );
 
-      if (decksError) {
-        console.error('Error fetching relevant decks:', decksError);
-        throw decksError;
-      }
-      
-      relevantDecks = cardDecks || [];
-    }
-    
-    // Create map of deck IDs to deck objects
-    const decksMap: { [key: string]: any } = {};
-    if (relevantDecks) {
-      relevantDecks.forEach(deck => {
-        decksMap[deck.id] = deck;
-      });
-    }
-    
-    // Map cards to include deck info
-    const cardResults = matchingCards.map(card => {
-      const deckInfo = decksMap[card.deck_id] || { id: card.deck_id, title: 'Unknown Deck' };
-      return {
-        id: card.id,
-        answer: card.answer,
-        video_url: card.video_url,
-        deck_id: card.deck_id,
-        deck: deckInfo,
-        type: 'card'
-      };
-    });
-    
-    // Map decks to search results format
-    const deckResults = matchingDecks ? matchingDecks.map(deck => ({
-      id: deck.id,
-      title: deck.title,
-      user_id: deck.user_id,
+    const formattedCards = matchingCards.map(c => ({
+      id: c.id,
+      answer: c.answer,
+      video_url: c.video_url,
+      deck_id: c.deck_id,
+      deck: { id: c.deck_id, title: c.deck_title },
+      type: 'card'
+    }));
+
+    const formattedDecks = matchingDecks.map(d => ({
+      id: d.id,
+      title: d.title,
+      user_id: d.user_id,
       type: 'deck'
-    })) : [];
-    
-    console.log(`Returning ${cardResults.length} card results and ${deckResults.length} deck results`);
-    res.json({ cards: cardResults, decks: deckResults });
-  } catch (error: any) {
-    console.error('Error in search API:', error);
-    res.status(500).json({ error: error?.message || 'An error occurred' });
-  }
-});
+    }));
 
-// Simple test search endpoint with static data
-app.get('/api/search-test', (req, res) => {
-  try {
-    console.log('Search test API called with query:', req.query);
-    const searchTerm = req.query.term?.toString().toLowerCase() || '';
-    
-    // Static test data
-    const testData = [
-      { 
-        id: '1', 
-        answer: 'hello', 
-        video_url: 'test.mp4', 
-        deck_id: 'deck1',
-        deck: { id: 'deck1', title: 'Greetings Deck' } 
-      },
-      { 
-        id: '2', 
-        answer: 'goodbye', 
-        video_url: 'test2.mp4', 
-        deck_id: 'deck1',
-        deck: { id: 'deck1', title: 'Greetings Deck' } 
-      },
-      { 
-        id: '3', 
-        answer: 'thank you', 
-        video_url: 'test3.mp4', 
-        deck_id: 'deck2',
-        deck: { id: 'deck2', title: 'Polite Phrases' } 
-      }
-    ];
-    
-    const results = searchTerm ? 
-      testData.filter(item => item.answer.includes(searchTerm)) : 
-      testData;
-    
-    console.log(`Test search for "${searchTerm}" found ${results.length} results`);
-    res.json(results);
-  } catch (error: any) {
-    console.error('Error in test search:', error);
-    res.status(500).json({ error: error?.message || 'An error occurred' });
+    return res.status(200).json({ cards: formattedCards, decks: formattedDecks });
+  } catch (error) {
+    next(error);
   }
 });
 
 // Star a card
-app.post('/api/cards/:cardId/star', async (req, res) => {
+app.post('/api/cards/:cardId/star', authenticateJWT, defaultRateLimiter, async (req: Request, res: Response, next: NextFunction) => {
+  const { cardId } = req.params;
+  const userId = req.user?.id;
   try {
-    const { cardId } = req.params;
-    const { userId } = req.body;
-    
-    console.log(`Starring card ${cardId} for user ${userId}`);
-    
-    // Check if the starring already exists to avoid duplicates
-    const { data: existingStars, error: checkError } = await supabase
-      .from('starred_cards')
-      .select('*')
-      .eq('card_id', cardId)
-      .eq('user_id', userId);
-      
-    if (checkError) {
-      console.error('Error checking for existing star:', checkError);
-      throw checkError;
+    // Verify card exists
+    const { rows: cards } = await pool.query('SELECT id FROM cards WHERE id = $1', [cardId]);
+    if (cards.length === 0) {
+      return res.status(404).json({ error: 'Card not found' });
     }
-    
-    // If not already starred, add it
-    if (!existingStars || existingStars.length === 0) {
-      const { data, error } = await supabase
-        .from('starred_cards')
-        .insert([
-          { card_id: cardId, user_id: userId }
-        ]);
-        
-      if (error) {
-        console.error('Error starring card:', error);
-        throw error;
-      }
-      
-      return res.status(201).json({ message: 'Card starred successfully' });
-    }
-    
-    // Already starred
-    return res.status(200).json({ message: 'Card was already starred' });
-  } catch (error: any) {
-    console.error('Error in star card API:', error);
-    res.status(500).json({ error: error?.message || 'An error occurred' });
+
+    await pool.query(
+      'INSERT INTO starred_cards (user_id, card_id) VALUES ($1, $2) ON CONFLICT (user_id, card_id) DO NOTHING',
+      [userId, cardId]
+    );
+
+    return res.status(201).json({ message: 'Card starred successfully' });
+  } catch (error) {
+    next(error);
   }
 });
 
 // Unstar a card
-app.delete('/api/cards/:cardId/star', async (req, res) => {
+app.delete('/api/cards/:cardId/star', authenticateJWT, defaultRateLimiter, async (req: Request, res: Response, next: NextFunction) => {
+  const { cardId } = req.params;
+  const userId = req.user?.id;
   try {
-    const { cardId } = req.params;
-    const { userId } = req.body;
-    
-    console.log(`Unstarring card ${cardId} for user ${userId}`);
-    
-    const { error } = await supabase
-      .from('starred_cards')
-      .delete()
-      .eq('card_id', cardId)
-      .eq('user_id', userId);
-      
-    if (error) {
-      console.error('Error unstarring card:', error);
-      throw error;
-    }
-    
+    await pool.query(
+      'DELETE FROM starred_cards WHERE user_id = $1 AND card_id = $2',
+      [userId, cardId]
+    );
     return res.status(200).json({ message: 'Card unstarred successfully' });
-  } catch (error: any) {
-    console.error('Error in unstar card API:', error);
-    res.status(500).json({ error: error?.message || 'An error occurred' });
+  } catch (error) {
+    next(error);
   }
 });
 
 // Get all starred cards for a user
-app.get('/api/users/:userId/starred-cards', async (req, res) => {
+app.get('/api/users/:userId/starred-cards', authenticateJWT, defaultRateLimiter, async (req: Request, res: Response, next: NextFunction) => {
+  const { userId } = req.params;
   try {
-    const { userId } = req.params;
-    
-    console.log(`Getting starred cards for user ${userId}`);
-    
-    // First get the starred card IDs
-    const { data: starredRelations, error: starError } = await supabase
-      .from('starred_cards')
-      .select('card_id')
-      .eq('user_id', userId);
-      
-    if (starError) {
-      console.error('Error fetching starred relations:', starError);
-      throw starError;
+    if (req.user?.id !== userId) {
+      return res.status(403).json({ error: 'Access Denied: Cannot view starred cards for another user' });
     }
-    
-    if (!starredRelations || starredRelations.length === 0) {
-      return res.json({ cards: [] });
+
+    const { rows } = await pool.query(
+      `SELECT c.*, d.title as deck_title 
+       FROM starred_cards sc
+       JOIN cards c ON sc.card_id = c.id
+       JOIN decks d ON c.deck_id = d.id
+       WHERE sc.user_id = $1`,
+      [userId]
+    );
+
+    const formattedCards = rows.map(c => ({
+      ...c,
+      deck: { id: c.deck_id, title: c.deck_title }
+    }));
+
+    return res.status(200).json({ cards: formattedCards });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Get all starred card IDs for a user (lightweight)
+app.get('/api/users/:userId/starred-card-ids', authenticateJWT, defaultRateLimiter, async (req: Request, res: Response, next: NextFunction) => {
+  const { userId } = req.params;
+  try {
+    if (req.user?.id !== userId) {
+      return res.status(403).json({ error: 'Access Denied: Cannot retrieve data for another user' });
     }
-    
-    // Extract the card IDs
-    const cardIds = starredRelations.map(item => item.card_id);
-    
-    // Get the actual card data
-    const { data: cards, error: cardsError } = await supabase
-      .from('cards')
-      .select('*')
-      .in('id', cardIds);
-      
-    if (cardsError) {
-      console.error('Error fetching starred cards:', cardsError);
-      throw cardsError;
+
+    const { rows } = await pool.query('SELECT card_id FROM starred_cards WHERE user_id = $1', [userId]);
+    const cardIds = rows.map(r => r.card_id);
+
+    return res.status(200).json({ cardIds });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ----------------------------------------------------
+// AI pipeline practice endpoints
+// ----------------------------------------------------
+
+// POST /api/practice/analyze
+app.post(
+  '/api/practice/analyze',
+  authenticateJWT,
+  upload.single('video'),
+  [
+    body('sign_attempted').isString().trim().notEmpty().isLength({ max: 50 }).withMessage('Sign attempted must be string between 1 and 50 chars')
+  ],
+  validateRequest,
+  async (req: Request, res: Response, next: NextFunction) => {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Video file upload is required' });
     }
-    
-    // Get the relevant decks for these cards
-    const deckIds = [...new Set(cards.map(card => card.deck_id))];
-    
-    const { data: decks, error: decksError } = await supabase
-      .from('decks')
-      .select('*')
-      .in('id', deckIds);
-      
-    if (decksError) {
-      console.error('Error fetching decks for starred cards:', decksError);
-      throw decksError;
+
+    const { sign_attempted } = req.body;
+    logger.info('Starting AI analysis pipeline', { user: req.user?.email, sign: sign_attempted });
+
+    try {
+      // 1. Forward video file buffer to AI service to extract landmarks
+      const extractFormData = new FormData();
+      const videoBlob = new Blob([req.file.buffer], { type: req.file.mimetype });
+      extractFormData.append('file', videoBlob, req.file.originalname);
+
+      let landmarks: any;
+      try {
+        const landmarkRes = await axios.post(`${env.AI_SERVICE_URL}/extract-landmarks`, extractFormData, {
+          headers: {
+            'X-Internal-Secret': env.AI_SERVICE_SECRET
+          },
+          timeout: 60000 // 60s timeout
+        });
+        landmarks = landmarkRes.data;
+      } catch (err: any) {
+        logger.error('Failed landmark extraction call to AI microservice', { error: err.message });
+        return res.status(503).json({ error: 'AI service temporarily unavailable (landmark extraction)' });
+      }
+
+      // 2. Classify the sign from landmark sequence
+      let classification: any;
+      try {
+        const classRes = await axios.post(
+          `${env.AI_SERVICE_URL}/classify-sign`,
+          {
+            landmarks,
+            expected_sign: sign_attempted
+          },
+          {
+            headers: {
+              'X-Internal-Secret': env.AI_SERVICE_SECRET,
+              'Content-Type': 'application/json'
+            },
+            timeout: 60000
+          }
+        );
+        classification = classRes.data;
+      } catch (err: any) {
+        logger.error('Failed classification call to AI microservice', { error: err.message });
+        return res.status(503).json({ error: 'AI service temporarily unavailable (sign classification)' });
+      }
+
+      // 3. Fetch reference landmarks from the database
+      const { rows: templates } = await pool.query(
+        'SELECT landmark_sequence FROM sign_templates WHERE LOWER(sign_label) = LOWER($1)',
+        [sign_attempted.toLowerCase().trim()]
+      );
+
+      let referenceLandmarks = null;
+      if (templates.length > 0) {
+        referenceLandmarks = templates[0].landmark_sequence;
+      } else {
+        // Fallback mock template if sign does not exist in DB (e.g. 60 frames, 21 joints, 3 coordinates)
+        referenceLandmarks = Array(60).fill(Array(21).fill([0.5, 0.4, 0.1]));
+      }
+
+      // 4. Generate AI biomechanical coach feedback
+      let feedback: any;
+      try {
+        const feedbackRes = await axios.post(
+          `${env.AI_SERVICE_URL}/generate-feedback`,
+          {
+            sign_attempted,
+            predicted_sign: classification.predicted_sign,
+            confidence: classification.confidence,
+            landmark_data: landmarks,
+            reference_landmarks: referenceLandmarks
+          },
+          {
+            headers: {
+              'X-Internal-Secret': env.AI_SERVICE_SECRET,
+              'Content-Type': 'application/json'
+            },
+            timeout: 60000
+          }
+        );
+        feedback = feedbackRes.data;
+      } catch (err: any) {
+        logger.error('Failed feedback generator call to AI microservice', { error: err.message });
+        return res.status(503).json({ error: 'AI service temporarily unavailable (feedback generation)' });
+      }
+
+      // 5. Save the session history to database
+      await pool.query(
+        `INSERT INTO practice_sessions 
+         (user_id, sign_attempted, landmark_data, ai_score, ai_feedback, improvement_areas)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [
+          req.user?.id,
+          sign_attempted,
+          JSON.stringify(landmarks),
+          feedback.overall_score,
+          feedback.summary,
+          feedback.improvements
+        ]
+      );
+
+      logger.info('Practice session analysis saved successfully', { user: req.user?.email, score: feedback.overall_score });
+
+      // 6. Return response
+      return res.status(200).json(feedback);
+
+    } catch (err: any) {
+      logger.error('Error during practice session analysis flow', { error: err.message });
+      return res.status(500).json({ error: 'Internal server error processing practice attempt.' });
     }
-    
-    // Create a map of deck IDs to deck objects
-    const decksMap: { [key: string]: any } = {};
-    if (decks) {
-      decks.forEach(deck => {
-        decksMap[deck.id] = deck;
+  }
+);
+
+// GET /api/practice/history (authenticated)
+app.get('/api/practice/history', authenticateJWT, defaultRateLimiter, async (req: Request, res: Response, next: NextFunction) => {
+  const page = parseInt(req.query.page as string) || 1;
+  const limit = parseInt(req.query.limit as string) || 10;
+  const offset = (page - 1) * limit;
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, sign_attempted, ai_score, ai_feedback, improvement_areas, created_at
+       FROM practice_sessions
+       WHERE user_id = $1
+       ORDER BY created_at DESC
+       LIMIT $2 OFFSET $3`,
+      [req.user?.id, limit, offset]
+    );
+
+    return res.status(200).json(rows);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/practice/stats (authenticated)
+app.get('/api/practice/stats', authenticateJWT, defaultRateLimiter, async (req: Request, res: Response, next: NextFunction) => {
+  const userId = req.user?.id;
+  try {
+    // 1. Total sessions
+    const { rows: sessionCount } = await pool.query(
+      'SELECT COUNT(*) FROM practice_sessions WHERE user_id = $1',
+      [userId]
+    );
+    const totalSessions = parseInt(sessionCount[0].count);
+
+    if (totalSessions === 0) {
+      return res.status(200).json({
+        total_sessions: 0,
+        average_score: 0.0,
+        most_practiced_sign: 'None',
+        most_improved_sign: 'None',
+        streak_days: 0
       });
     }
-    
-    // Add deck info to each card
-    const cardsWithDecks = cards.map(card => {
-      const deckInfo = decksMap[card.deck_id] || { id: card.deck_id, title: 'Unknown Deck' };
-      return {
-        ...card,
-        deck: deckInfo
-      };
-    });
-    
-    res.json({ cards: cardsWithDecks });
-  } catch (error: any) {
-    console.error('Error in get starred cards API:', error);
-    res.status(500).json({ error: error?.message || 'An error occurred' });
-  }
-});
 
-// Get all starred card IDs for a user (lighter-weight endpoint)
-app.get('/api/users/:userId/starred-card-ids', async (req, res) => {
-  try {
-    const { userId } = req.params;
-    
-    console.log(`Getting starred card IDs for user ${userId}`);
-    
-    const { data: starredRelations, error } = await supabase
-      .from('starred_cards')
-      .select('card_id')
-      .eq('user_id', userId);
-      
-    if (error) {
-      console.error('Error fetching starred card IDs:', error);
-      throw error;
+    // 2. Average score
+    const { rows: averageRes } = await pool.query(
+      'SELECT AVG(ai_score) as avg_score FROM practice_sessions WHERE user_id = $1',
+      [userId]
+    );
+    const averageScore = parseFloat(parseFloat(averageRes[0].avg_score || '0').toFixed(1));
+
+    // 3. Most practiced sign
+    const { rows: mostPracticedRes } = await pool.query(
+      `SELECT sign_attempted, COUNT(*) as count 
+       FROM practice_sessions 
+       WHERE user_id = $1 
+       GROUP BY sign_attempted 
+       ORDER BY count DESC 
+       LIMIT 1`,
+      [userId]
+    );
+    const mostPracticedSign = mostPracticedRes.length > 0 ? mostPracticedRes[0].sign_attempted : 'None';
+
+    // 4. Most improved sign
+    const { rows: mostImprovedRes } = await pool.query(
+      `WITH first_last AS (
+         SELECT DISTINCT ON (sign_attempted)
+           sign_attempted,
+           FIRST_VALUE(ai_score) OVER (PARTITION BY sign_attempted ORDER BY created_at ASC) as first_score,
+           FIRST_VALUE(ai_score) OVER (PARTITION BY sign_attempted ORDER BY created_at DESC) as last_score
+         FROM practice_sessions
+         WHERE user_id = $1
+       )
+       SELECT sign_attempted, (last_score - first_score) as improvement
+       FROM first_last
+       ORDER BY improvement DESC
+       LIMIT 1`,
+      [userId]
+    );
+    const mostImprovedSign = mostImprovedRes.length > 0 && parseFloat(mostImprovedRes[0].improvement) > 0 
+      ? mostImprovedRes[0].sign_attempted 
+      : 'None';
+
+    // 5. Streak days
+    const { rows: dates } = await pool.query(
+      `SELECT DISTINCT DATE(created_at) as practice_date 
+       FROM practice_sessions 
+       WHERE user_id = $1 
+       ORDER BY practice_date DESC`,
+      [userId]
+    );
+
+    let streakDays = 0;
+    if (dates.length > 0) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const lastPractice = new Date(dates[0].practice_date);
+      lastPractice.setHours(0, 0, 0, 0);
+
+      const diffTime = Math.abs(today.getTime() - lastPractice.getTime());
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      // Calculate sequential days if they practiced today or yesterday
+      if (diffDays <= 1) {
+        streakDays = 1;
+        let current = lastPractice;
+        for (let i = 1; i < dates.length; i++) {
+          const next = new Date(dates[i].practice_date);
+          next.setHours(0, 0, 0, 0);
+          const diff = (current.getTime() - next.getTime()) / (1000 * 60 * 60 * 24);
+          if (diff === 1) {
+            streakDays++;
+            current = next;
+          } else {
+            break;
+          }
+        }
+      }
     }
-    
-    const cardIds = starredRelations.map(item => item.card_id);
-    
-    res.json({ cardIds });
-  } catch (error: any) {
-    console.error('Error in get starred card IDs API:', error);
-    res.status(500).json({ error: error?.message || 'An error occurred' });
+
+    return res.status(200).json({
+      total_sessions: totalSessions,
+      average_score: averageScore,
+      most_practiced_sign: mostPracticedSign,
+      most_improved_sign: mostImprovedSign,
+      streak_days: streakDays
+    });
+
+  } catch (error) {
+    next(error);
   }
 });
 
-// Main function to start the server
+// ----------------------------------------------------
+// Global Error Handler & 404
+// ----------------------------------------------------
+app.use((req: Request, res: Response) => {
+  res.status(404).json({ error: 'Endpoint not found' });
+});
+
+app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+  logger.error('Unhandled server error', { message: err.message, stack: err.stack });
+  res.status(err.status || 500).json({ error: err.message || 'Internal server error occurred' });
+});
+
+// Start the server
 const startServer = async () => {
   try {
-    // Create database tables first
-    console.log('Creating and initializing database tables...');
-    await clearExistingData();
-    
-    // Then initialize sample data
-    console.log('Loading sample data...');
-    await createSampleData();
-    console.log('Data initialized successfully.');
+    // 1. Verify/Bootstrap DB Tables
+    logger.info('Initializing PostgreSQL database schema...');
+    await initDatabase();
 
-    // Then start the server
-    const PORT = process.env.PORT || 8080;
-    app.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
-      console.log('API is ready to accept requests');
+    // 2. Import Seed Decks and Cards if empty
+    logger.info('Running database seed checker...');
+    await seedData();
+
+    // 3. Start listening
+    app.listen(env.PORT, () => {
+      logger.info(`🚀 Server running on port ${env.PORT} in ${process.env.NODE_ENV || 'development'} mode`);
     });
-  } catch (error: any) {
-    console.error('Failed to start server:', error.message);
-    process.exit(1); // Exit if server fails to start
+  } catch (err: any) {
+    logger.error('Failed to start server:', { error: err.message });
+    process.exit(1);
   }
 };
 
-// Start the application
-startServer(); 
+startServer();
