@@ -1,17 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import { useAuth } from '../contexts/AuthContext';
+import { apiClient } from '../api/client';
 import './Home.css';
 
-// Define the constant here since the import is not working
 const LOCAL_STORAGE_STARRED_KEY = 'asl_study_tool_starred_cards';
-
-// Removing the conflicting inline styles entirely - using only the CSS file styles
-
-interface User {
-  id: string;
-  email: string;
-}
 
 interface Deck {
   id: string;
@@ -33,6 +26,9 @@ interface SearchResult {
 }
 
 const Home: React.FC = () => {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+
   const [decks, setDecks] = useState<Deck[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -44,184 +40,98 @@ const Home: React.FC = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [starredCards, setStarredCards] = useState<SearchResult[]>([]);
   const [loadingStarred, setLoadingStarred] = useState(true);
-  
-  const navigate = useNavigate();
 
   // Fetch starred cards
   useEffect(() => {
+    if (!user) return;
+
     const fetchStarredCards = async () => {
       try {
-        // In a real app, you'd get the actual user ID from auth
-        const demoUserId = "demo-user-id"; // Hardcoded for demo
-        
-        // Try server first
-        try {
-          const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/users/${demoUserId}/starred-cards`);
-          if (response.data && response.data.cards && response.data.cards.length > 0) {
-            console.log(`Loaded ${response.data.cards.length} starred cards from server`);
-            setStarredCards(response.data.cards);
-          } else {
-            // If server returns no data, try localStorage
-            console.log('No starred cards from server, checking localStorage');
-            const localStarredStr = localStorage.getItem(LOCAL_STORAGE_STARRED_KEY);
-            if (localStarredStr) {
-              try {
-                const localStarredIds = JSON.parse(localStarredStr);
-                console.log(`Found ${localStarredIds.length} starred card IDs in localStorage`);
-                
-                // We need to convert IDs to card objects, so fetch all cards from all decks
-                if (localStarredIds.length > 0) {
-                  // Create placeholder cards with just IDs for now (better than nothing)
-                  const placeholderStarredCards = localStarredIds.map((id: string) => ({
-                    id,
-                    answer: "Starred Card",
-                    video_url: "",
-                    deck_id: "unknown",
-                    deck: { id: "unknown", title: "Unknown Deck" },
-                    type: "card"
-                  }));
-                  setStarredCards(placeholderStarredCards);
-                  console.log(`Created ${placeholderStarredCards.length} placeholder cards for starred IDs`);
-                }
-              } catch (e) {
-                console.error('Error parsing localStorage starred cards:', e);
-                setStarredCards([]);
-              }
-            } else {
-              console.log('No starred cards in localStorage either');
-              setStarredCards([]);
-            }
-          }
-        } catch (serverErr) {
-          console.error('Error fetching starred cards from server:', serverErr);
+        setLoadingStarred(true);
+        // Load starred cards from our backend for the active user
+        const response = await apiClient.get(`/api/users/${user.id}/starred-cards`);
+        if (response.data && response.data.cards) {
+          setStarredCards(response.data.cards);
           
-          // If server fails, try localStorage
-          const localStarredStr = localStorage.getItem(LOCAL_STORAGE_STARRED_KEY);
-          if (localStarredStr) {
-            try {
-              const localStarredIds = JSON.parse(localStarredStr);
-              console.log(`Found ${localStarredIds.length} starred card IDs in localStorage`);
-              
-              // Create placeholder cards from IDs
-              if (localStarredIds.length > 0) {
-                const placeholderStarredCards = localStarredIds.map((id: string) => ({
-                  id,
-                  answer: "Starred Card",
-                  video_url: "",
-                  deck_id: "unknown",
-                  deck: { id: "unknown", title: "Unknown Deck" },
-                  type: "card"
-                }));
-                setStarredCards(placeholderStarredCards);
-              }
-            } catch (e) {
-              console.error('Error parsing localStorage starred cards:', e);
-              setStarredCards([]);
+          // Sync with localStorage backup
+          const cardIds = response.data.cards.map((c: any) => c.id);
+          localStorage.setItem(LOCAL_STORAGE_STARRED_KEY, JSON.stringify(cardIds));
+        }
+      } catch (serverErr) {
+        console.error('Error fetching starred cards from server, checking localStorage backup:', serverErr);
+        
+        // Fallback to localStorage if server is unreachable
+        const localStarredStr = localStorage.getItem(LOCAL_STORAGE_STARRED_KEY);
+        if (localStarredStr) {
+          try {
+            const localStarredIds = JSON.parse(localStarredStr);
+            if (localStarredIds.length > 0) {
+              const placeholderStarredCards = localStarredIds.map((id: string) => ({
+                id,
+                answer: "Starred Card",
+                video_url: "",
+                deck_id: "unknown",
+                deck: { id: "unknown", title: "Unknown Deck" },
+                type: "card"
+              }));
+              setStarredCards(placeholderStarredCards);
             }
-          } else {
-            setStarredCards([]);
+          } catch (e) {
+            console.error('Error parsing localStorage starred cards:', e);
           }
         }
-      } catch (err) {
-        console.error('Error in starred cards logic:', err);
-        setStarredCards([]);
       } finally {
         setLoadingStarred(false);
       }
     };
 
     fetchStarredCards();
-  }, []);
+  }, [user]);
 
+  // Fetch Decks
   useEffect(() => {
-    const fetchData = async () => {
+    if (!user) return;
+
+    const fetchDecks = async () => {
       setLoading(true);
       setError(null);
-      
       try {
-        console.log('Starting data fetch...');
-        // First, get the demo user
-        const usersResponse = await axios.get(`${process.env.REACT_APP_API_URL}/api/users`);
-        
-        console.log('Users API response:', usersResponse.data);
-        
-        if (!usersResponse.data || usersResponse.data.length === 0) {
-          throw new Error('No users found');
+        const response = await apiClient.get<Deck[]>(`/api/decks/${user.id}`);
+        if (response.data) {
+          setDecks(response.data);
         }
-        
-        const demoUser = usersResponse.data.find((user: User) => user.email === 'demo@example.com');
-        console.log('Found demo user:', demoUser);
-        
-        if (!demoUser) {
-          throw new Error('Demo user not found');
-        }
-
-        // Then fetch decks for that user
-        console.log('Fetching decks for user:', demoUser.id);
-        const decksResponse = await axios.get(`${process.env.REACT_APP_API_URL}/api/decks/${demoUser.id}`);
-        
-        console.log('Decks API response:', decksResponse.data);
-        
-        if (!decksResponse.data) {
-          throw new Error('No decks data received');
-        }
-        
-        const fetchedDecks = decksResponse.data;
-        setDecks(fetchedDecks);
-        console.log(`Fetched ${fetchedDecks.length} decks`);
-        
-        setLoading(false);
       } catch (err: any) {
-        console.error('Error fetching data:', err);
-        setError(err.message || 'Failed to load decks');
+        console.error('Error fetching decks:', err);
+        setError(err.response?.data?.error || 'Failed to load decks. Check server connection.');
+      } finally {
         setLoading(false);
       }
     };
 
-    fetchData();
-  }, []);
+    fetchDecks();
+  }, [user]);
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Search triggered with term:', searchTerm);
-    
     if (!searchTerm.trim()) {
-      console.log('Empty search term, clearing results');
       setSearchResults({ cards: [], decks: [] });
       return;
     }
     
     setIsSearching(true);
-    
     try {
-      // Use the server-side search API
-      const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/search`, {
+      const response = await apiClient.get('/api/search', {
         params: { term: searchTerm.trim() }
       });
       
-      console.log('Search API response:', response.data);
-      
-      // Handle the case when API returns an array instead of {cards, decks} object
-      if (Array.isArray(response.data)) {
-        // If the response is an array, assume it's an array of cards
-        setSearchResults({ 
-          cards: response.data, 
-          decks: [] 
-        });
-      } else if (response.data && typeof response.data === 'object') {
-        // Ensure cards and decks properties exist
-        const formattedResults = {
+      if (response.data) {
+        setSearchResults({
           cards: Array.isArray(response.data.cards) ? response.data.cards : [],
           decks: Array.isArray(response.data.decks) ? response.data.decks : []
-        };
-        setSearchResults(formattedResults);
-      } else {
-        // Fallback if response has unexpected format
-        setSearchResults({ cards: [], decks: [] });
+        });
       }
     } catch (err: any) {
       console.error('Error searching:', err);
-      // Show an empty result set on error
       setSearchResults({ cards: [], decks: [] });
     } finally {
       setIsSearching(false);
@@ -241,33 +151,14 @@ const Home: React.FC = () => {
     setSearchResults({ cards: [], decks: [] });
   };
 
-  const hasStarredCards = starredCards.length > 0;
-  console.log('Has starred cards:', hasStarredCards, 'Count:', starredCards.length);
-
-  // Handler for when a starred card is clicked
-  const handleStarredCardClick = (cardId: string, deckId: string) => {
-    navigate(`/deck/${deckId}`, { state: { fromSearch: true, highlightCardId: cardId }});
-  };
-
-  // Create a virtual starred deck
   const viewStarredCards = () => {
     if (starredCards.length > 0) {
-      // Instead of using a test view, send to the deck component with a special flag
-      console.log("Viewing all starred cards in deck view");
       navigate(`/deck/all-starred`, { 
         state: { 
           allStarred: true,
           starredCardIds: localStorage.getItem(LOCAL_STORAGE_STARRED_KEY)
         }
       });
-    }
-  };
-  
-  // Test all starred cards across all decks
-  const testAllStarredCards = () => {
-    if (starredCards.length > 0) {
-      // Navigate to test mode with a special flag indicating we want to test all starred cards
-      navigate(`/test/all-decks`, { state: { starredOnly: true, allDecks: true }});
     }
   };
 
@@ -292,34 +183,21 @@ const Home: React.FC = () => {
     );
   }
 
-  const hasSearchResults = 
-    (searchResults?.cards?.length > 0) || 
-    (searchResults?.decks?.length > 0);
+  const hasStarredCards = starredCards.length > 0;
+  const hasSearchResults = (searchResults.cards.length > 0) || (searchResults.decks.length > 0);
 
   return (
     <div className="home-container">
-      <h1 className="home-title">ASL Study Decks</h1>
-      
-      {/* Debug section - hidden in production */}
-      {false && (
-        <div style={{ 
-          background: '#333', 
-          padding: '10px', 
-          borderRadius: '5px', 
-          margin: '0 0 20px 0',
-          fontSize: '12px'
-        }}>
-          <p>Starred Cards: {starredCards.length}</p>
-          <p>hasStarredCards: {hasStarredCards ? 'true' : 'false'}</p>
-          <p>Loading: {loading ? 'true' : 'false'}, Loading Starred: {loadingStarred ? 'true' : 'false'}</p>
-          <button onClick={() => {
-            // Check localStorage
-            const local = localStorage.getItem(LOCAL_STORAGE_STARRED_KEY);
-            console.log('localStorage starred cards:', local);
-            alert('localStorage starred cards: ' + (local || 'none'));
-          }}>Check Local Storage</button>
+      {/* Navigation Header */}
+      <header className="home-nav-header">
+        <div className="nav-brand-logo">🤟 ASL Study</div>
+        <div className="nav-user-controls">
+          <button onClick={() => navigate('/dashboard')} className="nav-dashboard-btn">Dashboard</button>
+          <button onClick={logout} className="nav-logout-btn">Logout</button>
         </div>
-      )}
+      </header>
+
+      <h1 className="home-title">ASL Study Decks</h1>
       
       <div className="search-container">
         <form onSubmit={handleSearch} className="search-form">
@@ -392,16 +270,14 @@ const Home: React.FC = () => {
       </div>
       
       <div className="deck-grid">
-        {/* Starred Cards "Deck" - only show if there are starred cards */}
         {hasStarredCards && (
-          <div className="deck-link starred-deck-link">
-            <div className="deck-card starred-deck" onClick={viewStarredCards}>
+          <div className="deck-link starred-deck-link" onClick={viewStarredCards}>
+            <div className="deck-card starred-deck">
               <h2>Starred Cards ({starredCards.length})</h2>
             </div>
           </div>
         )}
         
-        {/* Regular decks */}
         {decks.map(deck => (
           <Link 
             key={deck.id}

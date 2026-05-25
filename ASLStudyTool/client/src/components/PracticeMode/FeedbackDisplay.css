@@ -1,0 +1,223 @@
+/* Styling for AI feedback results card */
+
+.feedback-card {
+  background: rgba(30, 41, 59, 0.45);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 24px;
+  padding: 32px;
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4);
+  max-width: 580px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.feedback-header {
+  text-align: center;
+}
+
+.feedback-title {
+  font-size: 1.6rem;
+  font-weight: 800;
+  margin-bottom: 6px;
+  background: linear-gradient(135deg, #f8fafc 0%, #cbd5e1 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.feedback-meta {
+  font-size: 0.85rem;
+  color: #64748b;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* Score circular display */
+.feedback-score-section {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.progress-ring-container {
+  position: relative;
+  width: 140px;
+  height: 140px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.progress-ring-track {
+  stroke: rgba(255, 255, 255, 0.04);
+}
+
+.progress-ring-indicator {
+  transition: stroke-dashoffset 0.1s ease-out;
+}
+
+.score-label-overlay {
+  position: absolute;
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  justify-content: center;
+}
+
+.score-number {
+  font-size: 2.8rem;
+  font-weight: 800;
+  letter-spacing: -0.05em;
+}
+
+.score-max {
+  font-size: 1rem;
+  color: #64748b;
+  font-weight: 600;
+  margin-left: 2px;
+}
+
+/* Colors matching grade criteria */
+.score-green {
+  color: #10b981; /* Emerald */
+  filter: drop-shadow(0 0 8px rgba(16, 185, 129, 0.4));
+}
+
+.score-yellow {
+  color: #f59e0b; /* Amber */
+  filter: drop-shadow(0 0 8px rgba(245, 158, 11, 0.4));
+}
+
+.score-red {
+  color: #ef4444; /* Rose */
+  filter: drop-shadow(0 0 8px rgba(239, 68, 68, 0.4));
+}
+
+/* Body and summary */
+.feedback-body {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.feedback-summary-box {
+  background: rgba(15, 23, 42, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: 14px;
+  padding: 18px;
+}
+
+.feedback-summary-text {
+  font-size: 1rem;
+  line-height: 1.6;
+  color: #e2e8f0;
+  margin: 0;
+  text-align: left;
+}
+
+/* Biomechanical lists */
+.feedback-improvements-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  text-align: left;
+}
+
+.improvements-heading {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #a5b4fc;
+  margin: 0;
+}
+
+.improvements-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.improvement-item {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.03);
+  padding: 12px 16px;
+  border-radius: 12px;
+  transition: background 0.2s ease;
+}
+
+.improvement-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.improvement-bullet-icon {
+  font-size: 1.1rem;
+  line-height: 1.2;
+}
+
+.improvement-text {
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: #cbd5e1;
+}
+
+/* Encouragement Box */
+.feedback-encouragement-box {
+  border-left: 3px solid #6366f1;
+  padding-left: 14px;
+  text-align: left;
+  background: rgba(99, 102, 241, 0.03);
+  padding-top: 10px;
+  padding-bottom: 10px;
+  border-radius: 0 10px 10px 0;
+}
+
+.encouragement-text {
+  font-size: 0.92rem;
+  line-height: 1.5;
+  color: #94a3b8;
+  font-style: italic;
+  margin: 0;
+}
+
+.encouragement-icon {
+  margin-right: 6px;
+  font-style: normal;
+}
+
+/* Reset Button */
+.feedback-footer {
+  display: flex;
+  justify-content: center;
+}
+
+.feedback-reset-btn {
+  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+  border: none;
+  color: #ffffff;
+  padding: 14px 32px;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.3);
+  transition: all 0.2s ease;
+}
+
+.feedback-reset-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(99, 102, 241, 0.5);
+  background: linear-gradient(135deg, #818cf8 0%, #6366f1 100%);
+}
+
+.feedback-reset-btn:active {
+  transform: translateY(0);
+}
