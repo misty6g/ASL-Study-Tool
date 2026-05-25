@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: asl_postgres_db
+    restart: always
+    environment:
+      POSTGRES_USER: asl_user
+      POSTGRES_PASSWORD: asl_password
+      POSTGRES_DB: asl_study_tool
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - asl-network
+
+  ai_service:
+    build:
+      context: ./ASLStudyTool/ai_service
+      dockerfile: Dockerfile
+    container_name: asl_ai_microservice
+    restart: always
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - AI_SERVICE_SECRET=supersecretinternalapikey123
+      - ALLOWED_ORIGIN=http://server:8080
+    # Not exposed to the public internet - accessible only within the internal Docker network
+    expose:
+      - "8000"
+    networks:
+      - asl-network
+
+  server:
+    build:
+      context: ./ASLStudyTool/server
+      dockerfile: Dockerfile
+    container_name: asl_express_backend
+    restart: always
+    environment:
+      - PORT=8080
+      - DATABASE_URL=postgresql://asl_user:asl_password@db:5432/asl_study_tool
+      - JWT_SECRET=supersecretjwtaccesskeychangemeinprod123
+      - JWT_REFRESH_SECRET=supersecretjwtrefreshkeychangemeinprod456
+      - AI_SERVICE_URL=http://ai_service:8000
+      - AI_SERVICE_SECRET=supersecretinternalapikey123
+      - CORS_ORIGIN=http://localhost:3000
+    ports:
+      - "8080:8080"
+    depends_on:
+      - db
+      - ai_service
+    networks:
+      - asl-network
+
+  client:
+    build:
+      context: ./ASLStudyTool/client
+      dockerfile: Dockerfile
+    container_name: asl_react_frontend
+    restart: always
+    environment:
+      - REACT_APP_API_URL=http://localhost:8080
+    ports:
+      - "3000:3000"
+    depends_on:
+      - server
+    networks:
+      - asl-network
+
+volumes:
+  postgres_data:
+
+networks:
+  asl-network:
+    driver: bridge
