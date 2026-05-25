@@ -43,9 +43,22 @@ export const initDatabase = async () => {
     logger.info('Connected to PostgreSQL. Running database migration bootstrap...');
     
     // Read the initialization SQL file
-    const migrationPath = path.join(__dirname, 'db/migrations/001_database_init.sql');
+    let migrationPath = path.join(__dirname, 'db/migrations/001_database_init.sql');
     if (!fs.existsSync(migrationPath)) {
-      throw new Error(`Migration script not found at path: ${migrationPath}`);
+      // Fallback 1: check if running compiled dist/db.js but source directory is present
+      migrationPath = path.join(__dirname, '../src/db/migrations/001_database_init.sql');
+    }
+    if (!fs.existsSync(migrationPath)) {
+      // Fallback 2: check relative to project root src directory
+      migrationPath = path.join(process.cwd(), 'src/db/migrations/001_database_init.sql');
+    }
+    if (!fs.existsSync(migrationPath)) {
+      // Fallback 3: check relative to project root dist directory
+      migrationPath = path.join(process.cwd(), 'dist/db/migrations/001_database_init.sql');
+    }
+
+    if (!fs.existsSync(migrationPath)) {
+      throw new Error(`Migration script not found at any searched location. Last attempted path: ${migrationPath}`);
     }
 
     const sql = fs.readFileSync(migrationPath, 'utf8');

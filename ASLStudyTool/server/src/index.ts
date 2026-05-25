@@ -196,9 +196,16 @@ const seedData = async () => {
     ];
 
     for (const vocabFile of vocabFiles) {
-      const vocabularyFilePath = path.join(__dirname, `../../Videos/Beginning ASL 1/${vocabFile.filename}`);
+      let vocabularyFilePath = path.join(__dirname, `../../Videos/Beginning ASL 1/${vocabFile.filename}`);
       if (!fs.existsSync(vocabularyFilePath)) {
-        logger.warn(`Vocab seed file not found: ${vocabularyFilePath}`);
+        vocabularyFilePath = path.join(process.cwd(), `Videos/Beginning ASL 1/${vocabFile.filename}`);
+      }
+      if (!fs.existsSync(vocabularyFilePath)) {
+        vocabularyFilePath = path.join(process.cwd(), `../Videos/Beginning ASL 1/${vocabFile.filename}`);
+      }
+
+      if (!fs.existsSync(vocabularyFilePath)) {
+        logger.warn(`Vocab seed file not found for ${vocabFile.filename}`);
         continue;
       }
 

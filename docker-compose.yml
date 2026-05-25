@@ -51,6 +51,8 @@ services:
     depends_on:
       - db
       - ai_service
+    volumes:
+      - ./ASLStudyTool/Videos:/app/Videos
     networks:
       - asl-network
 

@@ -5,7 +5,7 @@
   "scripts": {
     "start": "node dist/index.js",
     "dev": "nodemon --watch src --ext ts --delay 1 --exec ts-node src/index.ts",
-    "build": "tsc",
+    "build": "tsc && node -e \"const fs = require('fs'); fs.mkdirSync('dist/db/migrations', { recursive: true }); fs.copyFileSync('src/db/migrations/001_database_init.sql', 'dist/db/migrations/001_database_init.sql');\"",
     "watch": "tsc -w"
   },
   "keywords": [],
