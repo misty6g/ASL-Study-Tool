@@ -12,18 +12,30 @@ export interface VideoSources {
  */
 export function extractGoogleDriveFileId(url: string): string | null {
   if (!url || typeof url !== 'string') return null;
+  const trimmed = url.trim();
 
-  if (url.includes('drive.google.com')) {
+  // Match /api/videos/stream/{id}
+  const streamMatch = trimmed.match(/\/api\/videos\/stream\/([a-zA-Z0-9_-]+)/);
+  if (streamMatch && streamMatch[1]) {
+    return streamMatch[1];
+  }
+
+  // Direct file ID format (e.g. 18UdWhaqW4OqABHe_T1PumvLqswIbZ4Qb)
+  if (/^[a-zA-Z0-9_-]{25,}$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  if (trimmed.includes('drive.google.com')) {
     // Format: /file/d/{id}
-    const fileDMatch = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+    const fileDMatch = trimmed.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
     if (fileDMatch && fileDMatch[1]) return fileDMatch[1];
 
     // Format: open?id={id}
-    const openMatch = url.match(/open\?id=([a-zA-Z0-9_-]+)/);
+    const openMatch = trimmed.match(/open\?id=([a-zA-Z0-9_-]+)/);
     if (openMatch && openMatch[1]) return openMatch[1];
 
     // Format: ?id={id} or &id={id}
-    const idMatch = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+    const idMatch = trimmed.match(/[?&]id=([a-zA-Z0-9_-]+)/);
     if (idMatch && idMatch[1]) return idMatch[1];
   }
 
