@@ -295,6 +295,57 @@
   order: -1; /* Display at the beginning of the flex container */
 }
 
+.fingerspelling-deck-link {
+  order: -2; /* Display at the very beginning of the flex container */
+}
+
+.fingerspelling-deck {
+  background: linear-gradient(145deg, #1d4ed8, #7c3aed);
+  position: relative;
+  overflow: hidden;
+}
+
+.fingerspelling-deck::before {
+  content: '🤟';
+  position: absolute;
+  font-size: 110px;
+  opacity: 0.18;
+  top: 50%;
+  right: -10px;
+  transform: translateY(-50%);
+  z-index: 0;
+}
+
+.fingerspelling-deck-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.fingerspelling-deck-content h2 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: white;
+}
+
+.fingerspelling-deck-badge {
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.2);
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.fingerspelling-deck:hover {
+  background: linear-gradient(145deg, #2563eb, #8b5cf6);
+}
+
 .starred-deck {
   background: linear-gradient(145deg, #00b8d4, #0097a7);
   position: relative;

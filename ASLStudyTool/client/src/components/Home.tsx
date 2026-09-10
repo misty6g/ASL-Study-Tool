@@ -394,6 +394,16 @@ const Home: React.FC = () => {
       </div>
       
       <div className="deck-grid">
+        {/* Fingerspelling Practice (asl.ms) Feature Card */}
+        <Link to="/fingerspelling" className="deck-link fingerspelling-deck-link">
+          <div className="deck-card fingerspelling-deck">
+            <div className="fingerspelling-deck-content">
+              <h2>🤟 Fingerspelling</h2>
+              <span className="fingerspelling-deck-badge">asl.ms Practice</span>
+            </div>
+          </div>
+        </Link>
+
         {/* Starred Cards "Deck" - only show if there are starred cards */}
         {hasStarredCards && (
           <div className="deck-link starred-deck-link">

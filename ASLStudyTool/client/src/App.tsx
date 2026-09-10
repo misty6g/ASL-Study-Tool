@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, useParams } from 'react-router-
 import Home from './components/Home';
 import Deck from './components/Deck';
 import TestMode from './components/TestMode';
+import FingerspellingPractice from './components/FingerspellingPractice';
 import Footer from './components/Footer';
 import './App.css';
 
@@ -25,6 +26,8 @@ function App() {
           <Route path="/deck/:deckId" element={<DeckWrapper />} />
           <Route path="/test/all-decks" element={<TestMode deckId="all-decks" />} />
           <Route path="/test/:deckId" element={<TestModeWrapper />} />
+          <Route path="/fingerspelling" element={<FingerspellingPractice />} />
+          <Route path="/asl-ms" element={<FingerspellingPractice />} />
         </Routes>
         <Footer />
       </div>

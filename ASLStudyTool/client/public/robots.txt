@@ -1,3 +1,78 @@
+# robots.txt for ASL Study Tool
 # https://www.robotstxt.org/robotstxt.html
+#
+# IMPORTANT: This file instructs web crawlers and scrapers on what they
+# are NOT permitted to access. In particular, all API endpoints that
+# serve or reference video content (Google Drive links) are disallowed
+# to prevent unauthorized harvesting of media URLs.
+
+# -----------------------------------------------------------------------
+# Block ALL bots from backend API and any video-related routes
+# -----------------------------------------------------------------------
 User-agent: *
-Disallow:
+
+# Block all API endpoints (video URLs live here)
+Disallow: /api/
+Disallow: /api/videos/
+Disallow: /api/cards/
+Disallow: /api/decks/
+Disallow: /api/practice/
+
+# Block any direct video proxy or redirect routes
+Disallow: /videos/
+Disallow: /video/
+Disallow: /media/
+
+# Block practice and session endpoints that may expose asset URLs
+Disallow: /practice/
+Disallow: /session/
+
+# Block internal and admin paths
+Disallow: /admin/
+Disallow: /internal/
+
+# -----------------------------------------------------------------------
+# Allow public-facing pages that are safe to index
+# -----------------------------------------------------------------------
+Allow: /
+Allow: /about
+Allow: /login
+Allow: /signup
+
+# -----------------------------------------------------------------------
+# Crawl delay — be polite to the server
+# -----------------------------------------------------------------------
+Crawl-delay: 10
+
+# -----------------------------------------------------------------------
+# Explicitly block known aggressive scrapers and AI training bots
+# -----------------------------------------------------------------------
+User-agent: GPTBot
+Disallow: /
+
+User-agent: ChatGPT-User
+Disallow: /
+
+User-agent: CCBot
+Disallow: /
+
+User-agent: anthropic-ai
+Disallow: /
+
+User-agent: ClaudeBot
+Disallow: /
+
+User-agent: Google-Extended
+Disallow: /
+
+User-agent: FacebookBot
+Disallow: /
+
+User-agent: Bytespider
+Disallow: /
+
+User-agent: PetalBot
+Disallow: /
+
+User-agent: Applebot-Extended
+Disallow: /
