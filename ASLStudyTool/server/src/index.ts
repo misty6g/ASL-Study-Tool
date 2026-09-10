@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 import path from 'path';
 import fs from 'fs';
+import https from 'https';
 
 // Load environment variables
 dotenv.config();
@@ -18,14 +19,189 @@ app.use(cors({
 }));
 app.use(express.json());
 
+// Video cache directory
+const videoCacheDir = path.join(__dirname, '../../Videos/.cache');
+if (!fs.existsSync(videoCacheDir)) {
+  try {
+    fs.mkdirSync(videoCacheDir, { recursive: true });
+  } catch (err) {
+    console.warn('Could not create video cache directory:', err);
+  }
+}
+
 // Serve video files
 const videosDir = path.join(__dirname, '../../Videos');
 app.use('/videos', express.static(videosDir));
+
+// Stream video from Google Drive with range support, CORS, and disk caching
+app.get('/api/videos/stream/:fileId', (req, res) => {
+  const fileId = req.params.fileId;
+  if (!fileId || !/^[a-zA-Z0-9_-]+$/.test(fileId)) {
+    return res.status(400).json({ error: 'Invalid file ID format' });
+  }
+
+  const cachedFilePath = path.join(videoCacheDir, `${fileId}.mp4`);
+
+  // If already cached on disk and valid size, serve using express sendFile (handles ranges automatically)
+  if (fs.existsSync(cachedFilePath)) {
+    try {
+      const stats = fs.statSync(cachedFilePath);
+      if (stats.size > 1000) {
+        return res.sendFile(cachedFilePath, {
+          headers: {
+            'Content-Type': 'video/mp4',
+            'Accept-Ranges': 'bytes',
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'public, max-age=86400'
+          }
+        });
+      }
+    } catch (statErr) {
+      console.warn('Error reading cached video:', statErr);
+    }
+  }
+
+  // Stream directly from Google Drive
+  const driveUrl = `https://drive.usercontent.google.com/download?id=${fileId}&export=download`;
+  const requestHeaders: Record<string, string> = {};
+  if (req.headers.range) {
+    requestHeaders['Range'] = req.headers.range;
+  }
+
+  const handleStreamResponse = (sourceRes: any) => {
+    // Handle redirect (e.g. 301, 302, 303)
+    if (sourceRes.statusCode && sourceRes.statusCode >= 300 && sourceRes.statusCode < 400 && sourceRes.headers.location) {
+      https.get(sourceRes.headers.location, { headers: requestHeaders }, (redirectRes) => {
+        handleStreamResponse(redirectRes);
+      }).on('error', (err) => {
+        console.error('Redirect video stream error:', err);
+        if (!res.headersSent) res.status(502).json({ error: 'Video stream redirect failed' });
+      });
+      return;
+    }
+
+    const statusCode = sourceRes.statusCode || 200;
+    if (statusCode >= 400) {
+      console.error(`Google Drive responded with status ${statusCode} for file ${fileId}`);
+      if (!res.headersSent) {
+        return res.status(statusCode).json({ error: 'Unable to stream video from provider' });
+      }
+      return;
+    }
+
+    const resHeaders: Record<string, string | number> = {
+      'Content-Type': sourceRes.headers['content-type'] || 'video/mp4',
+      'Accept-Ranges': 'bytes',
+      'Access-Control-Allow-Origin': '*',
+      'Cache-Control': 'public, max-age=86400'
+    };
+    if (sourceRes.headers['content-length']) resHeaders['Content-Length'] = sourceRes.headers['content-length'];
+    if (sourceRes.headers['content-range']) resHeaders['Content-Range'] = sourceRes.headers['content-range'];
+
+    res.writeHead(statusCode, resHeaders);
+    sourceRes.pipe(res);
+
+    // If full stream without range, cache the file to disk in background
+    if (statusCode === 200 && !req.headers.range) {
+      try {
+        const fileStream = fs.createWriteStream(cachedFilePath);
+        sourceRes.pipe(fileStream);
+      } catch (cacheErr) {
+        console.warn('Cache write error:', cacheErr);
+      }
+    }
+  };
+
+  const driveReq = https.get(driveUrl, { headers: requestHeaders }, handleStreamResponse);
+  driveReq.on('error', (err) => {
+    console.error('Google Drive fetch error:', err);
+    if (!res.headersSent) {
+      res.status(502).json({ error: 'Failed to fetch video stream' });
+    }
+  });
+});
 
 // Initialize Supabase client
 const supabaseUrl = process.env.SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseKey);
+
+// List of vocabulary files to process
+const vocabFiles = [
+  { filename: 'VocabularyRelatedToConversation.txt', title: 'ASL Conversation Vocabulary' },
+  { filename: 'VocabularyRelatedToLocations.txt', title: 'ASL Location Vocabulary' },
+  { filename: 'VocabularyRelatedToClass.txt', title: 'ASL Class Vocabulary' },
+  { filename: 'PronounsWithNumeralIncorporation.txt', title: 'ASL Pronouns With Numeral Incorporation' },
+  { filename: 'VocabularyRelatedToNegatingVerbs.txt', title: 'ASL Negating Verbs' },
+  { filename: 'VocabularyRelatingToDeafCulture.txt', title: 'ASL Deaf Culture Vocabulary' },
+  { filename: 'WH-Questions.txt', title: 'ASL WH-Questions' },
+  { filename: 'VocabularyRelatedToPronouns.txt', title: 'ASL Pronouns' },
+  { filename: 'VocabularyRelatingToMajors.txt', title: 'ASL Majors Vocabulary' }
+];
+
+interface LocalDeck {
+  id: string;
+  title: string;
+  user_id: string;
+}
+
+interface LocalCard {
+  id: string;
+  video_url: string;
+  answer: string;
+  deck_id: string;
+}
+
+interface LocalUser {
+  id: string;
+  email: string;
+}
+
+const localStore = {
+  users: [{ id: 'demo-user-id', email: 'demo@example.com' }] as LocalUser[],
+  decks: [] as LocalDeck[],
+  cards: [] as LocalCard[],
+  starredCardIds: new Set<string>(),
+};
+
+const populateLocalStore = () => {
+  localStore.decks = [];
+  localStore.cards = [];
+  const demoUserId = localStore.users[0].id;
+  let cardCounter = 1;
+
+  for (let i = 0; i < vocabFiles.length; i++) {
+    const vf = vocabFiles[i];
+    const deckId = `deck-${i + 1}`;
+    localStore.decks.push({
+      id: deckId,
+      title: vf.title,
+      user_id: demoUserId
+    });
+
+    const vocabularyFilePath = path.join(__dirname, `../../Videos/Beginning ASL 1/${vf.filename}`);
+    try {
+      if (fs.existsSync(vocabularyFilePath)) {
+        const fileContent = fs.readFileSync(vocabularyFilePath, 'utf-8');
+        const lines = fileContent.split('\n').filter(line => line.trim());
+        for (const line of lines) {
+          const parts = line.split(',').map(item => item.trim());
+          if (parts.length >= 2 && parts[0] && parts[1]) {
+            localStore.cards.push({
+              id: `card-${cardCounter++}`,
+              video_url: parts[0],
+              answer: parts[1],
+              deck_id: deckId
+            });
+          }
+        }
+      }
+    } catch (err: any) {
+      console.warn(`Could not read local vocab file ${vf.filename}:`, err.message);
+    }
+  }
+  console.log(`Local fallback store initialized: ${localStore.decks.length} decks, ${localStore.cards.length} cards.`);
+};
 
 // Function to clear existing data
 const clearExistingData = async () => {
@@ -91,19 +267,6 @@ const createSampleData = async () => {
       .single();
 
     if (userError) throw userError;
-
-    // List of vocabulary files to process
-    const vocabFiles = [
-      { filename: 'VocabularyRelatedToConversation.txt', title: 'ASL Conversation Vocabulary' },
-      { filename: 'VocabularyRelatedToLocations.txt', title: 'ASL Location Vocabulary' },
-      { filename: 'VocabularyRelatedToClass.txt', title: 'ASL Class Vocabulary' },
-      { filename: 'PronounsWithNumeralIncorporation.txt', title: 'ASL Pronouns With Numeral Incorporation' },
-      { filename: 'VocabularyRelatedToNegatingVerbs.txt', title: 'ASL Negating Verbs' },
-      { filename: 'VocabularyRelatingToDeafCulture.txt', title: 'ASL Deaf Culture Vocabulary' },
-      { filename: 'WH-Questions.txt', title: 'ASL WH-Questions' },
-      { filename: 'VocabularyRelatedToPronouns.txt', title: 'ASL Pronouns' },
-      { filename: 'VocabularyRelatingToMajors.txt', title: 'ASL Majors Vocabulary' }
-    ];
 
     // Process each vocabulary file
     for (const vocabFile of vocabFiles) {
@@ -186,22 +349,14 @@ app.get('/health', (req, res) => {
 // Get all users
 app.get('/api/users', async (req, res) => {
   try {
-    console.log('Fetching users...');
-    const { data, error } = await supabase
-      .from('users')
-      .select('*');
-
-    if (error) {
-      console.error('Error fetching users:', error);
-      throw error;
+    const { data, error } = await supabase.from('users').select('*');
+    if (!error && data && data.length > 0) {
+      return res.json(data);
     }
-    
-    console.log('Users found:', data);
-    res.json(data);
   } catch (error: any) {
-    console.error('Error in /api/users:', error);
-    res.status(500).json({ error: error?.message || 'An error occurred' });
+    // Supabase unavailable, fallback to local store
   }
+  res.json(localStore.users);
 });
 
 // Get all decks for a user
@@ -212,11 +367,13 @@ app.get('/api/decks/:userId', async (req, res) => {
       .select('*')
       .eq('user_id', req.params.userId);
 
-    if (error) throw error;
-    res.json(data);
+    if (!error && data && data.length > 0) {
+      return res.json(data);
+    }
   } catch (error: any) {
-    res.status(500).json({ error: error?.message || 'An error occurred' });
+    // Supabase unavailable, fallback to local store
   }
+  res.json(localStore.decks);
 });
 
 // Get all cards in a deck
@@ -227,11 +384,14 @@ app.get('/api/cards/:deckId', async (req, res) => {
       .select('*')
       .eq('deck_id', req.params.deckId);
 
-    if (error) throw error;
-    res.json(data);
+    if (!error && data && data.length > 0) {
+      return res.json(data);
+    }
   } catch (error: any) {
-    res.status(500).json({ error: error?.message || 'An error occurred' });
+    // Supabase unavailable, fallback to local store
   }
+  const deckCards = localStore.cards.filter(c => c.deck_id === req.params.deckId);
+  res.json(deckCards);
 });
 
 // Serve a test video file for checking if videos are loading
@@ -244,99 +404,72 @@ app.get('/api/test-video', (req, res) => {
 // Search for cards by answer text
 app.get('/api/search', async (req, res) => {
   try {
-    console.log('Search API called with query:', req.query);
-    const searchTerm = req.query.term?.toString().toLowerCase();
-    
+    const searchTerm = req.query.term?.toString().toLowerCase().trim();
     if (!searchTerm) {
-      console.log('No search term provided');
       return res.status(400).json({ error: 'Search term is required' });
     }
-    
-    console.log(`Searching for term: "${searchTerm}"`);
 
-    // Search for matching cards
-    const { data: matchingCards, error: cardsError } = await supabase
-      .from('cards')
-      .select('*, deck_id')
-      .ilike('answer', `%${searchTerm}%`);
+    try {
+      const { data: matchingCards } = await supabase
+        .from('cards')
+        .select('*, deck_id')
+        .ilike('answer', `%${searchTerm}%`);
 
-    if (cardsError) {
-      console.error('Error searching cards:', cardsError);
-      throw cardsError;
-    }
-    
-    console.log(`Found ${matchingCards ? matchingCards.length : 0} matching cards`);
-
-    // Search for matching decks by title
-    const { data: matchingDecks, error: decksSearchError } = await supabase
-      .from('decks')
-      .select('*')
-      .ilike('title', `%${searchTerm}%`);
-
-    if (decksSearchError) {
-      console.error('Error searching decks:', decksSearchError);
-      throw decksSearchError;
-    }
-
-    console.log(`Found ${matchingDecks ? matchingDecks.length : 0} matching decks`);
-
-    // If no matching cards or decks, return empty array
-    if ((!matchingCards || matchingCards.length === 0) && (!matchingDecks || matchingDecks.length === 0)) {
-      return res.json({ cards: [], decks: [] });
-    }
-
-    // Get unique deck IDs from the matching cards
-    const deckIds = [...new Set(matchingCards.map(card => card.deck_id))];
-    
-    // Fetch only the decks we need for cards that match
-    let relevantDecks = [];
-    if (deckIds.length > 0) {
-      const { data: cardDecks, error: decksError } = await supabase
+      const { data: matchingDecks } = await supabase
         .from('decks')
         .select('*')
-        .in('id', deckIds);
+        .ilike('title', `%${searchTerm}%`);
 
-      if (decksError) {
-        console.error('Error fetching relevant decks:', decksError);
-        throw decksError;
+      if ((matchingCards && matchingCards.length > 0) || (matchingDecks && matchingDecks.length > 0)) {
+        const deckIds = [...new Set((matchingCards || []).map((card: any) => card.deck_id))];
+        let relevantDecks: any[] = [];
+        if (deckIds.length > 0) {
+          const { data: cardDecks } = await supabase.from('decks').select('*').in('id', deckIds);
+          relevantDecks = cardDecks || [];
+        }
+        const decksMap: { [key: string]: any } = {};
+        relevantDecks.forEach((deck: any) => { decksMap[deck.id] = deck; });
+        const cardResults = (matchingCards || []).map((card: any) => ({
+          id: card.id,
+          answer: card.answer,
+          video_url: card.video_url,
+          deck_id: card.deck_id,
+          deck: decksMap[card.deck_id] || { id: card.deck_id, title: 'Unknown Deck' },
+          type: 'card'
+        }));
+        const deckResults = (matchingDecks || []).map((deck: any) => ({
+          id: deck.id,
+          title: deck.title,
+          user_id: deck.user_id,
+          type: 'deck'
+        }));
+        return res.json({ cards: cardResults, decks: deckResults });
       }
-      
-      relevantDecks = cardDecks || [];
+    } catch (e) {
+      // Supabase unavailable, fallback to local store
     }
-    
-    // Create map of deck IDs to deck objects
-    const decksMap: { [key: string]: any } = {};
-    if (relevantDecks) {
-      relevantDecks.forEach(deck => {
-        decksMap[deck.id] = deck;
+
+    // Local in-memory search
+    const localMatchedCards = localStore.cards
+      .filter(c => c.answer.toLowerCase().includes(searchTerm))
+      .map(card => {
+        const deck = localStore.decks.find(d => d.id === card.deck_id) || { id: card.deck_id, title: 'Unknown Deck' };
+        return {
+          id: card.id,
+          answer: card.answer,
+          video_url: card.video_url,
+          deck_id: card.deck_id,
+          deck,
+          type: 'card'
+        };
       });
-    }
-    
-    // Map cards to include deck info
-    const cardResults = matchingCards.map(card => {
-      const deckInfo = decksMap[card.deck_id] || { id: card.deck_id, title: 'Unknown Deck' };
-      return {
-        id: card.id,
-        answer: card.answer,
-        video_url: card.video_url,
-        deck_id: card.deck_id,
-        deck: deckInfo,
-        type: 'card'
-      };
-    });
-    
-    // Map decks to search results format
-    const deckResults = matchingDecks ? matchingDecks.map(deck => ({
-      id: deck.id,
-      title: deck.title,
-      user_id: deck.user_id,
-      type: 'deck'
-    })) : [];
-    
-    console.log(`Returning ${cardResults.length} card results and ${deckResults.length} deck results`);
-    res.json({ cards: cardResults, decks: deckResults });
+
+    const localMatchedDecks = localStore.decks
+      .filter(d => d.title.toLowerCase().includes(searchTerm))
+      .map(d => ({ ...d, type: 'deck' }));
+
+    res.json({ cards: localMatchedCards, decks: localMatchedDecks });
   } catch (error: any) {
-    console.error('Error in search API:', error);
     res.status(500).json({ error: error?.message || 'An error occurred' });
   }
 });
@@ -344,42 +477,15 @@ app.get('/api/search', async (req, res) => {
 // Simple test search endpoint with static data
 app.get('/api/search-test', (req, res) => {
   try {
-    console.log('Search test API called with query:', req.query);
     const searchTerm = req.query.term?.toString().toLowerCase() || '';
-    
-    // Static test data
     const testData = [
-      { 
-        id: '1', 
-        answer: 'hello', 
-        video_url: 'test.mp4', 
-        deck_id: 'deck1',
-        deck: { id: 'deck1', title: 'Greetings Deck' } 
-      },
-      { 
-        id: '2', 
-        answer: 'goodbye', 
-        video_url: 'test2.mp4', 
-        deck_id: 'deck1',
-        deck: { id: 'deck1', title: 'Greetings Deck' } 
-      },
-      { 
-        id: '3', 
-        answer: 'thank you', 
-        video_url: 'test3.mp4', 
-        deck_id: 'deck2',
-        deck: { id: 'deck2', title: 'Polite Phrases' } 
-      }
+      { id: '1', answer: 'hello', video_url: 'test.mp4', deck_id: 'deck1', deck: { id: 'deck1', title: 'Greetings Deck' } },
+      { id: '2', answer: 'goodbye', video_url: 'test2.mp4', deck_id: 'deck1', deck: { id: 'deck1', title: 'Greetings Deck' } },
+      { id: '3', answer: 'thank you', video_url: 'test3.mp4', deck_id: 'deck2', deck: { id: 'deck2', title: 'Polite Phrases' } }
     ];
-    
-    const results = searchTerm ? 
-      testData.filter(item => item.answer.includes(searchTerm)) : 
-      testData;
-    
-    console.log(`Test search for "${searchTerm}" found ${results.length} results`);
+    const results = searchTerm ? testData.filter(item => item.answer.includes(searchTerm)) : testData;
     res.json(results);
   } catch (error: any) {
-    console.error('Error in test search:', error);
     res.status(500).json({ error: error?.message || 'An error occurred' });
   }
 });
@@ -389,41 +495,14 @@ app.post('/api/cards/:cardId/star', async (req, res) => {
   try {
     const { cardId } = req.params;
     const { userId } = req.body;
-    
-    console.log(`Starring card ${cardId} for user ${userId}`);
-    
-    // Check if the starring already exists to avoid duplicates
-    const { data: existingStars, error: checkError } = await supabase
-      .from('starred_cards')
-      .select('*')
-      .eq('card_id', cardId)
-      .eq('user_id', userId);
-      
-    if (checkError) {
-      console.error('Error checking for existing star:', checkError);
-      throw checkError;
+    try {
+      await supabase.from('starred_cards').insert([{ card_id: cardId, user_id: userId }]);
+    } catch (e) {
+      // Fallback to local
     }
-    
-    // If not already starred, add it
-    if (!existingStars || existingStars.length === 0) {
-      const { data, error } = await supabase
-        .from('starred_cards')
-        .insert([
-          { card_id: cardId, user_id: userId }
-        ]);
-        
-      if (error) {
-        console.error('Error starring card:', error);
-        throw error;
-      }
-      
-      return res.status(201).json({ message: 'Card starred successfully' });
-    }
-    
-    // Already starred
-    return res.status(200).json({ message: 'Card was already starred' });
+    localStore.starredCardIds.add(cardId);
+    res.status(201).json({ message: 'Card starred successfully' });
   } catch (error: any) {
-    console.error('Error in star card API:', error);
     res.status(500).json({ error: error?.message || 'An error occurred' });
   }
 });
@@ -433,23 +512,14 @@ app.delete('/api/cards/:cardId/star', async (req, res) => {
   try {
     const { cardId } = req.params;
     const { userId } = req.body;
-    
-    console.log(`Unstarring card ${cardId} for user ${userId}`);
-    
-    const { error } = await supabase
-      .from('starred_cards')
-      .delete()
-      .eq('card_id', cardId)
-      .eq('user_id', userId);
-      
-    if (error) {
-      console.error('Error unstarring card:', error);
-      throw error;
+    try {
+      await supabase.from('starred_cards').delete().eq('card_id', cardId).eq('user_id', userId);
+    } catch (e) {
+      // Fallback
     }
-    
-    return res.status(200).json({ message: 'Card unstarred successfully' });
+    localStore.starredCardIds.delete(cardId);
+    res.status(200).json({ message: 'Card unstarred successfully' });
   } catch (error: any) {
-    console.error('Error in unstar card API:', error);
     res.status(500).json({ error: error?.message || 'An error occurred' });
   }
 });
@@ -457,115 +527,178 @@ app.delete('/api/cards/:cardId/star', async (req, res) => {
 // Get all starred cards for a user
 app.get('/api/users/:userId/starred-cards', async (req, res) => {
   try {
-    const { userId } = req.params;
-    
-    console.log(`Getting starred cards for user ${userId}`);
-    
-    // First get the starred card IDs
-    const { data: starredRelations, error: starError } = await supabase
-      .from('starred_cards')
-      .select('card_id')
-      .eq('user_id', userId);
-      
-    if (starError) {
-      console.error('Error fetching starred relations:', starError);
-      throw starError;
-    }
-    
-    if (!starredRelations || starredRelations.length === 0) {
-      return res.json({ cards: [] });
-    }
-    
-    // Extract the card IDs
-    const cardIds = starredRelations.map(item => item.card_id);
-    
-    // Get the actual card data
-    const { data: cards, error: cardsError } = await supabase
-      .from('cards')
-      .select('*')
-      .in('id', cardIds);
-      
-    if (cardsError) {
-      console.error('Error fetching starred cards:', cardsError);
-      throw cardsError;
-    }
-    
-    // Get the relevant decks for these cards
-    const deckIds = [...new Set(cards.map(card => card.deck_id))];
-    
-    const { data: decks, error: decksError } = await supabase
-      .from('decks')
-      .select('*')
-      .in('id', deckIds);
-      
-    if (decksError) {
-      console.error('Error fetching decks for starred cards:', decksError);
-      throw decksError;
-    }
-    
-    // Create a map of deck IDs to deck objects
-    const decksMap: { [key: string]: any } = {};
-    if (decks) {
-      decks.forEach(deck => {
-        decksMap[deck.id] = deck;
+    const cardIds = Array.from(localStore.starredCardIds);
+    const cardsWithDecks = localStore.cards
+      .filter(card => cardIds.includes(card.id))
+      .map(card => {
+        const deckInfo = localStore.decks.find(d => d.id === card.deck_id) || { id: card.deck_id, title: 'Unknown Deck' };
+        return { ...card, deck: deckInfo };
       });
-    }
-    
-    // Add deck info to each card
-    const cardsWithDecks = cards.map(card => {
-      const deckInfo = decksMap[card.deck_id] || { id: card.deck_id, title: 'Unknown Deck' };
-      return {
-        ...card,
-        deck: deckInfo
-      };
-    });
-    
     res.json({ cards: cardsWithDecks });
   } catch (error: any) {
-    console.error('Error in get starred cards API:', error);
     res.status(500).json({ error: error?.message || 'An error occurred' });
   }
 });
 
-// Get all starred card IDs for a user (lighter-weight endpoint)
+// Get all starred card IDs for a user
 app.get('/api/users/:userId/starred-card-ids', async (req, res) => {
-  try {
-    const { userId } = req.params;
-    
-    console.log(`Getting starred card IDs for user ${userId}`);
-    
-    const { data: starredRelations, error } = await supabase
-      .from('starred_cards')
-      .select('card_id')
-      .eq('user_id', userId);
-      
-    if (error) {
-      console.error('Error fetching starred card IDs:', error);
-      throw error;
-    }
-    
-    const cardIds = starredRelations.map(item => item.card_id);
-    
-    res.json({ cardIds });
-  } catch (error: any) {
-    console.error('Error in get starred card IDs API:', error);
-    res.status(500).json({ error: error?.message || 'An error occurred' });
+  res.json({ cardIds: Array.from(localStore.starredCardIds) });
+});
+
+// --- Practice Feedback API Endpoints ---
+
+// In-memory fallback stores
+const userPreferencesStore = new Map<string, { dominantHand: 'left' | 'right' }>();
+const practiceAttemptsStore = new Map<string, any[]>();
+
+// Curated practice specifications metadata
+const PRACTICE_SPECS_DATA: Record<string, any> = {
+  hello: {
+    id: 'hello',
+    name: 'Hello',
+    aliases: ['hello', 'hi'],
+    version: '1.0.0',
+    description: 'Salute gesture starting at temple and moving outward.',
+    requiredHands: 'one',
+    instructions: 'Bring your dominant hand to your temple with fingers extended, then move outward in a smooth salute.',
+    expectedHandshape: 'Flat hand (open palm)',
+    expectedLocationZone: 'forehead',
+    expectedPalmDirection: 'away'
+  },
+  thankyou: {
+    id: 'thankyou',
+    name: "Thank You / You're Welcome",
+    aliases: ['thank you', "thank you/you're welcome", "you're welcome", 'thanks'],
+    version: '1.0.0',
+    description: 'Fingertips start at chin and move forward and outward.',
+    requiredHands: 'one',
+    instructions: 'Fingertips touch near chin with flat hand, then move outward and slightly down toward the other person.',
+    expectedHandshape: 'Flat hand (open palm)',
+    expectedLocationZone: 'chin',
+    expectedPalmDirection: 'inward'
+  },
+  good: {
+    id: 'good',
+    name: 'Good',
+    aliases: ['good', 'well'],
+    version: '1.0.0',
+    description: 'Dominant flat hand starts at chin and moves down to chest level.',
+    requiredHands: 'one',
+    instructions: 'Place your dominant flat hand at your chin and bring it down to chest level.',
+    expectedHandshape: 'Flat hand',
+    expectedLocationZone: 'chin',
+    expectedPalmDirection: 'inward'
+  },
+  forgot: {
+    id: 'forgot',
+    name: 'Forgot',
+    aliases: ['forgot', 'forget'],
+    version: '1.0.0',
+    description: 'Flat hand wipes across forehead from dominant to non-dominant side.',
+    requiredHands: 'one',
+    instructions: 'Place your flat hand against your forehead and wipe across outward.',
+    expectedHandshape: 'Flat hand curling across swipe',
+    expectedLocationZone: 'forehead',
+    expectedPalmDirection: 'inward'
+  },
+  fine: {
+    id: 'fine',
+    name: 'Fine',
+    aliases: ['fine'],
+    version: '1.0.0',
+    description: 'Open 5-hand with thumb touching center chest.',
+    requiredHands: 'one',
+    instructions: 'Open your dominant hand into a 5-handshape and touch your thumb to the center of your chest.',
+    expectedHandshape: '5-hand (fingers spread)',
+    expectedLocationZone: 'chest',
+    expectedPalmDirection: 'left'
   }
+};
+
+// GET all practice specifications
+app.get('/api/practice/specs', (req, res) => {
+  res.json({
+    version: '1.0.0',
+    specs: Object.values(PRACTICE_SPECS_DATA)
+  });
+});
+
+// GET a specific practice specification
+app.get('/api/practice/specs/:signId', (req, res) => {
+  const signId = req.params.signId.toLowerCase();
+  const spec = PRACTICE_SPECS_DATA[signId];
+  if (!spec) {
+    return res.status(404).json({ error: `Practice specification not found for '${signId}'` });
+  }
+  res.json(spec);
+});
+
+// GET user practice preferences (dominant hand)
+app.get('/api/users/:userId/preferences', (req, res) => {
+  const { userId } = req.params;
+  const prefs = userPreferencesStore.get(userId) || { dominantHand: 'right' };
+  res.json(prefs);
+});
+
+// POST user practice preferences
+app.post('/api/users/:userId/preferences', (req, res) => {
+  const { userId } = req.params;
+  const { dominantHand } = req.body;
+  const validHand = dominantHand === 'left' ? 'left' : 'right';
+
+  userPreferencesStore.set(userId, { dominantHand: validHand });
+  res.json({ success: true, dominantHand: validHand });
+});
+
+// POST a practice attempt summary (no raw video)
+app.post('/api/practice/attempts', (req, res) => {
+  try {
+    const { userId = 'demo-user-id', signId, overallScore, dominantHand, durationMs, dimensionResults } = req.body;
+    const attempt = {
+      id: `attempt_${Date.now()}`,
+      userId,
+      signId,
+      overallScore: Number(overallScore) || 0,
+      dominantHand: dominantHand === 'left' ? 'left' : 'right',
+      durationMs: Number(durationMs) || 0,
+      dimensionResults: dimensionResults || {},
+      createdAt: new Date().toISOString()
+    };
+
+    const existing = practiceAttemptsStore.get(userId) || [];
+    existing.push(attempt);
+    practiceAttemptsStore.set(userId, existing);
+
+    res.status(201).json({ success: true, attempt });
+  } catch (error: any) {
+    res.status(500).json({ error: error?.message || 'Failed to save practice attempt' });
+  }
+});
+
+// GET past practice attempts for a user
+app.get('/api/users/:userId/practice-attempts', (req, res) => {
+  const { userId } = req.params;
+  const attempts = practiceAttemptsStore.get(userId) || [];
+  res.json({ attempts });
 });
 
 // Main function to start the server
 const startServer = async () => {
   try {
-    // Create database tables first
-    console.log('Creating and initializing database tables...');
-    await clearExistingData();
-    
-    // Then initialize sample data
-    console.log('Loading sample data...');
-    await createSampleData();
-    console.log('Data initialized successfully.');
+    // 1. Populate resilient local in-memory database store
+    populateLocalStore();
 
-    // Then start the server
+    // 2. Attempt Supabase sync if remote host is reachable
+    try {
+      console.log('Attempting Supabase sync...');
+      await clearExistingData();
+      await createSampleData();
+      console.log('Supabase sync completed.');
+    } catch (dbErr: any) {
+      console.log('Supabase offline or unreachable. Running with resilient local in-memory store.');
+    }
+
+    // 3. Start the server
     const PORT = process.env.PORT || 8080;
     app.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);

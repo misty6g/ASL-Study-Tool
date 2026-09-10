@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
-import ReactPlayer from 'react-player';
 import './TestMode.css';
 import { LOCAL_STORAGE_STARRED_KEY } from './constants';
 import { Card } from '../types/Card';
+import { resolveVideoSources } from '../utils/videoUtils';
 
 interface TestModeProps {
   deckId: string;
@@ -32,7 +32,7 @@ const TestMode: React.FC<TestModeProps> = ({ deckId }) => {
     incorrect: [],
     userAnswers: []
   });
-  const [videoSource, setVideoSource] = useState<string>('');
+  const [useIframeFallback, setUseIframeFallback] = useState(false);
   const [starredCardIds, setStarredCardIds] = useState<string[]>([]);
   const [testMode, setTestMode] = useState<'all' | 'starred'>('all');
   const [loadingStarred, setLoadingStarred] = useState(true);
@@ -219,17 +219,8 @@ const TestMode: React.FC<TestModeProps> = ({ deckId }) => {
   };
 
   useEffect(() => {
-    if (cards.length > 0 && currentCardIndex < cards.length) {
-      const currentCard = cards[currentCardIndex];
-      // Transform Google Drive URL if needed (similar to Flashcard component)
-      if (currentCard.video_url.includes('drive.google.com')) {
-        const transformedUrl = transformGoogleDriveUrl(currentCard.video_url);
-        setVideoSource(transformedUrl);
-      } else {
-        setVideoSource(currentCard.video_url);
-      }
-    }
-  }, [cards, currentCardIndex]);
+    setUseIframeFallback(false);
+  }, [currentCardIndex]);
 
   // Add keyboard event listener for Enter key to navigate to next card
   useEffect(() => {
@@ -244,41 +235,6 @@ const TestMode: React.FC<TestModeProps> = ({ deckId }) => {
       window.removeEventListener('keydown', handleKeyPress);
     };
   }, [submitted, testComplete, currentCardIndex, cards.length]);
-
-  const transformGoogleDriveUrl = (url: string): string => {
-    // Check if it's a Google Drive URL
-    if (url.includes('drive.google.com')) {
-      // Extract file ID from URL
-      let fileId = '';
-      
-      // Handle different Google Drive URL formats
-      if (url.includes('drive.google.com/file/d/')) {
-        // Format: https://drive.google.com/file/d/{fileId}/view
-        const match = url.match(/\/file\/d\/([^\/]+)/);
-        if (match && match[1]) {
-          fileId = match[1];
-        }
-      } else if (url.includes('drive.google.com/open?id=')) {
-        // Format: https://drive.google.com/open?id={fileId}
-        const match = url.match(/open\?id=([^&]+)/);
-        if (match && match[1]) {
-          fileId = match[1];
-        }
-      } else if (url.includes('id=')) {
-        // Format: https://drive.google.com/uc?id={fileId}
-        const match = url.match(/id=([^&]+)/);
-        if (match && match[1]) {
-          fileId = match[1];
-        }
-      }
-      
-      if (fileId) {
-        return `https://drive.google.com/file/d/${fileId}/preview`;
-      }
-    }
-    
-    return url;
-  };
 
   // Improved helper function to check if an answer is correct, handling slash variants
   const checkAnswer = (userInput: string, correctAnswer: string): boolean => {
@@ -601,35 +557,46 @@ const TestMode: React.FC<TestModeProps> = ({ deckId }) => {
 
       <div className="test-content">
         <div className="video-container">
-          {videoSource && (
-            videoSource.includes('/preview') ? (
+          {currentCard && (() => {
+            const videoSources = resolveVideoSources(currentCard.video_url);
+            return useIframeFallback ? (
               <iframe 
-                src={videoSource}
+                src={videoSources.previewUrl}
                 width="100%" 
                 height="100%" 
                 allow="autoplay" 
                 allowFullScreen
                 style={{ border: 'none' }}
+                title={`ASL test video for card ${currentCardIndex + 1}`}
               ></iframe>
             ) : (
-              <ReactPlayer
-                url={videoSource}
+              <video
+                key={videoSources.streamUrl}
+                src={videoSources.streamUrl}
                 width="100%"
                 height="100%"
                 controls
-                playing={!submitted}
-                config={{
-                  file: {
-                    attributes: {
-                      controlsList: 'nodownload',
-                      disablePictureInPicture: true
-                    },
-                    forceVideo: true
+                muted
+                playsInline
+                autoPlay={!submitted}
+                loop
+                onLoadedMetadata={(e) => {
+                  e.currentTarget.muted = true;
+                  e.currentTarget.volume = 0;
+                }}
+                onPlay={(e) => {
+                  e.currentTarget.muted = true;
+                  e.currentTarget.volume = 0;
+                }}
+                onError={() => {
+                  if (videoSources.isDrive) {
+                    setUseIframeFallback(true);
                   }
                 }}
+                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
               />
-            )
-          )}
+            );
+          })()}
         </div>
 
         {!submitted ? (

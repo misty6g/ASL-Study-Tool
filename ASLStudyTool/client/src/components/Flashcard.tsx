@@ -1,9 +1,9 @@
-import React, { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
+import React, { useState, useEffect, forwardRef, useImperativeHandle, useRef } from 'react';
 import './Flashcard.css';
-import axios from 'axios';
-
-// Import ReactPlayer directly to prevent lazy loading issues
-import ReactPlayer from 'react-player';
+import { getSignSpecification } from '../practice/specifications';
+import PracticeModal from './PracticeModal';
+import PracticeDisclaimerModal from './PracticeDisclaimerModal';
+import { resolveVideoSources } from '../utils/videoUtils';
 
 interface FlashcardProps {
   videoUrl: string;
@@ -27,15 +27,64 @@ const Flashcard = forwardRef<FlashcardHandle, FlashcardProps>(
   const [isVideoLoaded, setIsVideoLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [videoSource, setVideoSource] = useState<string>('');
   const [hasFlipped, setHasFlipped] = useState(false);
   const [wasInteractedWith, setWasInteractedWith] = useState(false);
   const [starred, setStarred] = useState(isStarred);
+  const practiceSpec = getSignSpecification(answer);
+  const [isDisclaimerOpen, setIsDisclaimerOpen] = useState(false);
+  const [isPracticeOpen, setIsPracticeOpen] = useState(false);
+
+  const handlePracticeClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    let isDismissed = false;
+    try {
+      isDismissed = localStorage.getItem('asl_dismissed_practice_disclaimer') === 'true';
+    } catch (err) {
+      isDismissed = false;
+    }
+
+    if (isDismissed) {
+      setIsPracticeOpen(true);
+    } else {
+      setIsDisclaimerOpen(true);
+    }
+  };
+
+  const handleConfirmDisclaimer = (dontShowAgain: boolean) => {
+    if (dontShowAgain) {
+      try {
+        localStorage.setItem('asl_dismissed_practice_disclaimer', 'true');
+      } catch (err) {
+        // ignore localStorage errors
+      }
+    }
+    setIsDisclaimerOpen(false);
+    setIsPracticeOpen(true);
+  };
+
+  const handleCancelDisclaimer = () => {
+    setIsDisclaimerOpen(false);
+  };
+
+  const videoSources = resolveVideoSources(videoUrl);
+  const [useIframeFallback, setUseIframeFallback] = useState(false);
+  const videoElementRef = useRef<HTMLVideoElement | null>(null);
 
   // Update internal starred state when prop changes
   useEffect(() => {
     setStarred(isStarred);
   }, [isStarred]);
+
+  useEffect(() => {
+    setIsLoading(true);
+    setIsVideoLoaded(false);
+    setError(null);
+    setUseIframeFallback(false);
+    if (videoElementRef.current) {
+      videoElementRef.current.muted = true;
+      videoElementRef.current.volume = 0;
+    }
+  }, [videoUrl]);
 
   // Expose flip method to parent components
   useImperativeHandle(ref, () => ({
@@ -95,60 +144,7 @@ const Flashcard = forwardRef<FlashcardHandle, FlashcardProps>(
     }
   };
 
-  useEffect(() => {
-    // Transform Google Drive URL to direct video URL
-    const transformGoogleDriveUrl = (url: string): string => {
-      // Check if it's a Google Drive URL
-      if (url.includes('drive.google.com')) {
-        // Extract file ID from URL
-        let fileId = '';
-        
-        // Handle different Google Drive URL formats
-        if (url.includes('drive.google.com/file/d/')) {
-          // Format: https://drive.google.com/file/d/{fileId}/view
-          const match = url.match(/\/file\/d\/([^\/]+)/);
-          if (match && match[1]) {
-            fileId = match[1];
-          }
-        } else if (url.includes('drive.google.com/open?id=')) {
-          // Format: https://drive.google.com/open?id={fileId}
-          const match = url.match(/open\?id=([^&]+)/);
-          if (match && match[1]) {
-            fileId = match[1];
-          }
-        } else if (url.includes('id=')) {
-          // Format: https://drive.google.com/uc?id={fileId}
-          const match = url.match(/id=([^&]+)/);
-          if (match && match[1]) {
-            fileId = match[1];
-          }
-        }
-        
-        if (fileId) {
-          console.log('Extracted Google Drive file ID:', fileId);
-          // Use embed format which works better than direct download
-          return `https://drive.google.com/file/d/${fileId}/preview`;
-        }
-      }
-      
-      // If not a Google Drive URL or couldn't extract ID, return original
-      return url;
-    };
-
-    // Set video source with transformation if needed
-    if (videoUrl.includes('drive.google.com')) {
-      const transformedUrl = transformGoogleDriveUrl(videoUrl);
-      console.log('Transformed Google Drive URL:', transformedUrl);
-      setVideoSource(transformedUrl);
-    } else {
-      setVideoSource(videoUrl);
-    }
-    
-    console.log('Video URL:', videoUrl);
-  }, [videoUrl]);
-
   const handleVideoLoad = () => {
-    console.log('Video loaded successfully:', videoSource);
     setIsVideoLoaded(true);
     setIsLoading(false);
     setError(null);
@@ -156,16 +152,7 @@ const Flashcard = forwardRef<FlashcardHandle, FlashcardProps>(
 
   const handleVideoError = (e: any) => {
     console.error('Video error:', e);
-    console.error('Failed URL:', videoSource);
     setError('Failed to load video. Please check your internet connection and try again.');
-    setIsLoading(false);
-    
-    // Use a reliable fallback video if the main one fails
-    setVideoSource('https://filesamples.com/samples/video/mp4/sample_640x360.mp4');
-  };
-
-  const handleVideoStart = () => {
-    console.log('Video started playing');
     setIsLoading(false);
   };
 
@@ -188,9 +175,6 @@ const Flashcard = forwardRef<FlashcardHandle, FlashcardProps>(
     handleInteraction();
   };
 
-  // Special handling for Google Drive embedded videos
-  const isGoogleDriveEmbed = videoSource.includes('/preview');
-
   // Determine if the card should appear highlighted
   const shouldHighlight = isHighlighted && !wasInteractedWith;
 
@@ -202,13 +186,13 @@ const Flashcard = forwardRef<FlashcardHandle, FlashcardProps>(
             <div className="card-content">
               <div className="card-title">Sign</div>
               <div className="video-content">
-                {isLoading && !isGoogleDriveEmbed && (
+                {isLoading && (
                   <div className="video-loading">
                     <div className="loading-spinner"></div>
                     <p>Loading video...</p>
                   </div>
                 )}
-                {error && !isGoogleDriveEmbed && (
+                {error && !useIframeFallback && (
                   <div className="video-error">
                     <p>{error}</p>
                     <button 
@@ -216,10 +200,7 @@ const Flashcard = forwardRef<FlashcardHandle, FlashcardProps>(
                         e.stopPropagation();
                         setIsLoading(true);
                         setError(null);
-                        // Try reloading the video
-                        const currentUrl = videoSource;
-                        setVideoSource('');
-                        setTimeout(() => setVideoSource(currentUrl), 100);
+                        setUseIframeFallback(false);
                       }}
                       className="retry-button"
                     >
@@ -227,10 +208,10 @@ const Flashcard = forwardRef<FlashcardHandle, FlashcardProps>(
                     </button>
                   </div>
                 )}
-                {/* For Google Drive embedded videos, use iframe directly */}
-                {isGoogleDriveEmbed ? (
+                {useIframeFallback ? (
                   <iframe 
-                    src={videoSource}
+                    title={`ASL sign video demonstration for ${answer}`}
+                    src={videoSources.previewUrl}
                     width="100%" 
                     height="100%" 
                     allow="autoplay" 
@@ -242,34 +223,51 @@ const Flashcard = forwardRef<FlashcardHandle, FlashcardProps>(
                     }}
                   ></iframe>
                 ) : (
-                  // For regular videos, use ReactPlayer
-                  !error && videoSource && (
-                    <ReactPlayer
-                      url={videoSource}
-                      width="100%"
-                      height="100%"
-                      controls
-                      playing={false}
-                      onReady={handleVideoLoad}
-                      onError={handleVideoError}
-                      onStart={handleVideoStart}
-                      config={{
-                        file: {
-                          attributes: {
-                            controlsList: 'nodownload',
-                            disablePictureInPicture: true
-                          },
-                          forceVideo: true
-                        }
-                      }}
-                    />
-                  )
+                  <video
+                    ref={videoElementRef}
+                    key={videoSources.streamUrl}
+                    src={videoSources.streamUrl}
+                    controls
+                    muted
+                    loop
+                    playsInline
+                    autoPlay
+                    onLoadedData={handleVideoLoad}
+                    onLoadedMetadata={(e) => {
+                      e.currentTarget.muted = true;
+                      e.currentTarget.volume = 0;
+                    }}
+                    onPlay={(e) => {
+                      e.currentTarget.muted = true;
+                      e.currentTarget.volume = 0;
+                    }}
+                    onError={(e) => {
+                      console.warn('Direct stream error, using iframe fallback:', e);
+                      if (videoSources.isDrive) {
+                        setUseIframeFallback(true);
+                      } else {
+                        handleVideoError(e);
+                      }
+                    }}
+                    style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                  />
                 )}
               </div>
               {showInstructions && (
                 <div className="card-instruction">Click anywhere outside the video to flip</div>
               )}
             </div>
+            {/* Front practice button */}
+            {practiceSpec && (
+              <button
+                type="button"
+                className="practice-button"
+                onClick={handlePracticeClick}
+                title={`Practice signing "${practiceSpec.name}" with webcam feedback`}
+              >
+                📷 Practice
+              </button>
+            )}
             {/* Front star button */}
             <button
               className={`star-button ${starred ? 'starred' : ''}`}
@@ -289,6 +287,17 @@ const Flashcard = forwardRef<FlashcardHandle, FlashcardProps>(
                 <div className="card-instruction">Click to see the sign again</div>
               )}
             </div>
+            {/* Back practice button */}
+            {practiceSpec && (
+              <button
+                type="button"
+                className="practice-button"
+                onClick={handlePracticeClick}
+                title={`Practice signing "${practiceSpec.name}" with webcam feedback`}
+              >
+                📷 Practice
+              </button>
+            )}
             {/* Back star button */}
             <button
               className={`star-button ${starred ? 'starred' : ''}`}
@@ -300,6 +309,25 @@ const Flashcard = forwardRef<FlashcardHandle, FlashcardProps>(
           </div>
         </div>
       </div>
+
+      {/* Practice Disclaimer Pop-Up */}
+      {isDisclaimerOpen && practiceSpec && (
+        <PracticeDisclaimerModal
+          isOpen={isDisclaimerOpen}
+          signName={practiceSpec.name}
+          onConfirm={handleConfirmDisclaimer}
+          onCancel={handleCancelDisclaimer}
+        />
+      )}
+
+      {/* Practice Feedback Modal */}
+      {isPracticeOpen && practiceSpec && (
+        <PracticeModal
+          spec={practiceSpec}
+          videoUrl={videoSources.streamUrl || videoUrl}
+          onClose={() => setIsPracticeOpen(false)}
+        />
+      )}
     </div>
   );
 });

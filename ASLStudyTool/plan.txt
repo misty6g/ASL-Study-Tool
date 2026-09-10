@@ -1,148 +1,386 @@
-No problem! Let's revise the plan to use 100% free resources. Here's the adjusted approach:
+# Feature Brief: ASL Practice Feedback
 
-**Revised Tech Stack (All Free):**
-1. **Frontend Hosting**: GitHub Pages or Vercel (free static hosting)
-2. **Backend**: Node.js/Express hosted on Render (free tier)
-3. **Database**: Supabase (free PostgreSQL database)
-4. **Video Storage**: Google Drive Public Folder (free hosting)
-5. **Auth**: JSON Web Tokens (JWT) with localStorage
-6. **Video Player**: react-player (plays Google Drive links)
+## Project Context
 
-**Phase 1: Free Setup**
+This is an existing, complete web-based ASL study application. The current product contains a database of ASL signing videos organized as Quizlet-style flashcards. A learner can browse a study set, view a target word or phrase, and watch a reference video demonstrating its ASL sign.
 
-**1. Video Storage Solution (Free)**
-- Upload your videos to Google Drive
-- Set sharing to "Anyone with link can view"
-- Get shareable links like:
-  `https://drive.google.com/uc?export=view&id=YOUR_FILE_ID`
+Add a new optional feature called **Practice Feedback**. It should let a learner practice a supported isolated sign through their webcam, compare observable aspects of their attempt to a curated reference specification, and receive concise, constructive visual feedback.
 
-**2. Database Setup (Supabase)**
-1. Go to [supabase.com](https://supabase.com)
-2. Create new project
-3. Get your connection string from Settings > Database
+This feature is an enhancement to the existing flashcard study flow. It must not replace, break, or substantially redesign the current study experience.
 
-**3. Frontend Hosting**
-- Create GitHub repository
-- Connect to Vercel (vercel.com) for automatic deployments
+## Product Goal
 
-**Phase 2: Modified Implementation**
+For an eligible flashcard, a user should be able to:
 
-**Step 1: Frontend Setup (No Cost)**
-```bash
-npx create-react-app client --template typescript
-cd client
-npm install react-router-dom react-player axios
-```
+1. Watch the existing reference ASL-signing video.
+2. Select a “Practice” action.
+3. Grant webcam access.
+4. Receive clear framing guidance so their hands, shoulders, and upper torso remain visible.
+5. Perform one isolated sign in front of the camera.
+6. Receive a structured comparison of their visible hand motion to the sign’s configured expectations.
+7. Replay their practice attempt alongside the reference video or view landmark overlays.
+8. Retry as many times as they want.
 
-**Step 2: Backend Setup (Free)**
-```bash
-mkdir server
-cd server
-npm init -y
-npm install express cors dotenv pg @supabase/supabase-js
-```
+The feature should provide reference-based visual coaching for selected isolated signs. It is not a general ASL translator, a universal sign-language recognizer, or an authoritative assessment of ASL fluency.
 
-Create `server/index.ts`:
-```typescript
-import express from 'express';
-import cors from 'cors';
-import { createClient } from '@supabase/supabase-js';
+## Feedback Model
 
-const app = express();
-app.use(cors());
-app.use(express.json());
+The feature should use a **rules/specification-driven** evaluation approach, not a custom-trained machine-learning classifier.
 
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_KEY!
-);
+Each practice-enabled sign has a machine-readable sign specification that describes observable expectations for the sign. The practice engine extracts hand and body landmarks from webcam footage, normalizes them relative to the user’s body, evaluates them against the specification, and produces explainable feedback.
 
-// Basic endpoint example
-app.get('/cards/:deckId', async (req, res) => {
-  const { data, error } = await supabase
-    .from('cards')
-    .select('*')
-    .eq('deck_id', req.params.deckId);
+The system should compare only visible, measurable dimensions:
 
-  if (error) return res.status(500).json({ error });
-  res.json(data);
-});
-```
+- Hand presence and camera visibility
+- Required hand count
+- Approximate handshape
+- Body-relative signing location
+- Palm orientation
+- Motion direction
+- Movement amount or displacement
+- Motion timing
+- Two-hand relationship, symmetry, or coordination when applicable
+- Start and end posture for signs that have a distinct motion phase
 
-**Step 3: Database Schema (Supabase)**
-Create tables directly in Supabase dashboard:
-```sql
--- Users table
-create table users (
-  id uuid primary key default uuid_generate_v4(),
-  email text unique,
-  password text
-);
+The engine should not present itself as capable of fully evaluating ASL grammar, facial/non-manual markers, regional variation, conversational signing, or linguistic correctness beyond the configured visual properties of the selected isolated sign.
 
--- Decks table
-create table decks (
-  id uuid primary key default uuid_generate_v4(),
-  title text,
-  user_id uuid references users(id)
-);
+## Intended User Experience
 
--- Cards table (with Google Drive video URLs)
-create table cards (
-  id uuid primary key default uuid_generate_v4(),
-  video_url text,
-  answer text,
-  deck_id uuid references decks(id)
-);
-```
+### Entry point
 
-**Step 4: Video Card Component (Free Hosting)**
-```tsx
-import ReactPlayer from 'react-player';
+On eligible flashcards, add a visible but non-intrusive action such as:
 
-const Flashcard = ({ videoUrl, answer }) => {
-  return (
-    <div className="card">
-      <ReactPlayer 
-        url={videoUrl}
-        controls
-        width="100%"
-        height="200px"
-      />
-      <div className="answer">
-        {answer}
-      </div>
-    </div>
-  );
-};
-```
+- “Practice this sign”
+- “Try it yourself”
+- A small webcam/practice icon
 
-**Phase 3: Deployment (Free)**
+The control should only appear for signs that have an active practice specification. Flashcards without a configuration must continue to operate exactly as they do now.
 
-**1. Backend to Render**
-1. Create account on [render.com](https://render.com)
-2. Create new Web Service from your GitHub repo
-3. Add environment variables:
-   - SUPABASE_URL
-   - SUPABASE_KEY
-   - PORT=10000
+### Practice mode
 
-**2. Frontend to Vercel**
-1. Connect GitHub repo to Vercel
-2. Set build command: `npm run build`
-3. Add environment variable:
-   - REACT_APP_API_URL=https://your-render-backend.onrender.com
+Practice mode should open as a dedicated modal, panel, or route that preserves the user’s current study context.
 
-**Cost-Free Architecture Diagram:**
-```
-[User] --> [Vercel (Frontend)] --> [Render (Backend)] --> [Supabase (DB)]
-           │
-           └--> [Google Drive (Videos)]
-```
+It should include:
 
-**Next Steps: Let's focus on one of these free features first:**
-1. Creating and displaying a deck with video cards
-2. Basic learning mode with video playback
-3. Simple user registration (without payment)
-4. Video upload flow using Google Drive manual upload
+- The target word or phrase
+- The reference ASL video
+- Dominant hand selector (Left-handed vs. Right-handed), required prior to capture and stored in user preferences to ensure accurate evaluation
+- A short instruction describing how to position the camera
+- A live webcam preview
+- Real-time hand/pose landmark overlay or hand-visibility status
+- Clear capture controls: begin, retry, end/done, and exit
+- A simple capture state flow: setup → ready → recording/signing → processing → results
+- Accessible, readable error states when camera access, hand tracking, or framing fails
 
-Which part would you like to implement first? I'll provide detailed, cost-free instructions!
+Before recording or evaluation begins, the system should verify that the user’s face/upper torso area and hands are sufficiently visible for the configured sign. If required hands are out of frame, tracking is unstable, lighting is poor, or the pose cannot be estimated, the user should receive capture-quality guidance rather than an inaccurate score.
+
+### Results
+
+After an attempt, display feedback in a friendly, non-authoritative style.
+
+Results should prioritize the most useful one or two adjustments instead of exposing a long list of warnings. Example categories:
+
+- Strong: “Both hands stayed visible and your outward motion was close.”
+- Adjust: “Begin your hands closer to the center of your chest.”
+- Adjust: “Turn your palms slightly more upward before moving.”
+- Retry guidance: “Keep both hands inside the camera frame from start to finish.”
+
+The results UI may show:
+
+- A component summary for handshape, location, orientation, movement, and coordination
+- A comparison overlay or side-by-side playback
+- A timeline marking the portion of the attempt where the largest mismatch occurred
+- A “Try again” action
+- A return-to-flashcard action
+
+Do not make the overall feedback look like a formal grade, certification, fluency assessment, or universal measure of ASL accuracy. If an aggregate score is shown, label it as similarity to the app’s configured reference criteria.
+
+## Technical Approach
+
+### Computer Vision
+
+Use MediaPipe Tasks Vision for browser-based landmark extraction.
+
+The feature should use:
+
+- **Hand Landmarker** for hand detection, handedness, and hand/finger landmarks
+- **Pose Landmarker** for upper-body reference points, especially shoulders, elbows, wrists, torso, and head-related anchors
+- Optionally, additional face tracking only in a future iteration and only when a sign specification explicitly needs it
+
+Landmark extraction should run locally in the browser where feasible. This provides low-latency user feedback and avoids uploading webcam video by default.
+
+Use a performant client-side processing design that does not block normal UI rendering. A Web Worker, off-main-thread processing strategy, controlled frame rate, and cleanup of camera/tracker resources are expected considerations.
+
+### Landmark Data
+
+Each tracked frame should produce a normalized representation of hand and pose information sufficient to evaluate the sign’s specification.
+
+Core data should include:
+
+- Timestamp
+- Left/right hand detection status
+- Hand landmark coordinates for each detected hand
+- Handedness confidence
+- Relevant pose landmarks
+- Detection/tracking confidence where available
+- Derived body-relative wrist positions
+- Derived palm orientation
+- Derived finger-state or handshape features
+- Derived motion velocity and displacement
+
+Avoid treating screen pixels as meaningful absolute coordinates. Normalize hand landmarks relative to the user’s body, using the midpoint between shoulders as an origin and shoulder width or another stable body measurement as a scale.
+
+The system must handle:
+
+- Stored dominant hand preference (Left- vs. Right-handed): The engine reads the user's stored handedness preference to mirror landmark expectations and correctly assign dominant/non-dominant roles (e.g. active vs. base hand for asymmetrical two-handed signs). This ensures left-handed signers are evaluated with high accuracy without false mismatch penalties.
+- Mirrored webcam previews
+- Temporary landmark loss
+- Variable camera distance
+- Variable signing speed
+- Missing hand data
+- Low-confidence frames
+- Different screen sizes and camera orientations
+
+### Sign Specifications
+
+Add a sign specification layer that is separate from the existing flashcard content model but can be associated with individual flashcards.
+
+A sign specification represents the observable visual expectations for a practice-enabled sign. It should support one or more phases, such as:
+
+1. Start/setup
+2. Main movement
+3. End/hold
+
+A specification should be capable of defining:
+
+- Required hand(s)
+- Expected broad handshape or finger-state template
+- Expected hand location relative to body anchors
+- Expected palm orientation and acceptable angle tolerance
+- Expected movement direction and minimum/maximum displacement
+- Expected movement type: static, directional, outward, inward, up/down, circular, repeated, etc.
+- Expected start and end states
+- Dominant vs. non-dominant hand role mapping based on the user's stored handedness preference
+- Two-hand distance, relative position, symmetry, and synchronization
+- Per-rule tolerance thresholds
+- Per-rule weighting
+- Whether a rule is required, optional, or not applicable
+- User-facing feedback copy tied to a failed condition
+
+Specifications should use broad ranges and tolerances, rather than hardcoding a single person’s exact body coordinates or a single reference-video trajectory.
+
+Begin with a small set of practice-enabled signs that have simple, visible, front-facing motions. The system should be extensible so that more signs can be added through configuration rather than requiring new scoring logic for each sign.
+
+### Feature Extraction
+
+The evaluation system should derive interpretable geometric features from landmarks, including:
+
+- Finger extension/curl states based on joint angles
+- Fingertip-to-palm and fingertip-to-wrist distances
+- Finger spread
+- Wrist coordinates relative to shoulder midpoint and torso
+- Palm-plane normal vector from wrist, index MCP, and pinky MCP landmarks
+- Angle between observed and expected palm orientations
+- Per-frame wrist and fingertip velocity
+- Start-to-end displacement
+- Movement direction similarity
+- Movement trajectory properties
+- Relative distance and synchronized movement between hands
+
+The system should evaluate the sign in broad phases instead of requiring frame-perfect matching. It should support different signing speeds and small valid physical variations.
+
+### Capture and Segmentation
+
+The practice flow should favor reliable capture over fully automatic continuous-sign understanding.
+
+Use an intentional user flow such as:
+
+- User enters practice mode
+- System checks framing
+- User begins capture
+- A brief “ready” state is shown
+- User performs the sign
+- User finishes capture or the system detects a stable ending period
+- The system evaluates the bounded attempt
+
+The system should identify or infer a usable active-signing segment from the recording. A basic motion-energy approach based on wrist/fingertip velocity and stable start/end holds is acceptable for this feature. It should gracefully request a retry if a meaningful attempt cannot be isolated.
+
+### Evaluation and Feedback
+
+Evaluation should produce individual component outcomes, not only an opaque final score.
+
+The results model should support:
+
+- Capture validity status
+- Overall reference-similarity summary, if appropriate
+- Per-dimension score or status
+- Phase-level results
+- Confidence/quality information
+- Specific observed mismatch descriptions
+- Prioritized user-facing suggestions
+
+The feedback layer should be template-driven and sourced from known rule failures. It should avoid generative, unverifiable claims about the user’s signing.
+
+Examples of useful feedback:
+
+- “Keep both hands visible throughout the sign.”
+- “Start your right hand slightly higher, closer to chest level.”
+- “Open your fingers more at the end of the movement.”
+- “Move both hands outward together.”
+- “Your movement direction was close; try a slightly larger motion.”
+- “The app could not confidently compare this attempt because hand tracking was lost.”
+
+The engine should favor “cannot reliably assess” over a misleading low score when capture quality is inadequate.
+
+## Tech Stack
+
+### Existing application integration
+
+First inspect the current repository and preserve its architectural conventions, framework choices, component patterns, styling system, authentication model, API conventions, database layer, and deployment setup.
+
+Do not introduce a parallel application architecture if the existing stack already supports the feature.
+
+### Frontend
+
+Use the project’s existing frontend framework. If the current application is React or Next.js, the feature should use TypeScript and fit into the existing component/routing conventions.
+
+Recommended browser APIs and libraries:
+
+- `navigator.mediaDevices.getUserMedia()` for webcam access
+- MediaPipe Tasks Vision for hand and pose landmark detection
+- HTML `<video>` and `<canvas>` for live preview, capture, overlays, and playback
+- A Web Worker or equivalent off-main-thread processing path for continuous inference where compatible with the existing architecture
+- Existing UI/component library and CSS/styling approach already used by the project
+- Existing state-management strategy for practice-session state, user preferences, and flashcard association
+
+The practice experience should be responsive on laptop/desktop browsers first. Mobile support can be designed for but should not compromise the reliability of the initial webcam experience.
+
+### Backend and persistence
+
+Use the project’s existing backend/API/database architecture.
+
+The backend should support, as needed:
+
+- Associating a practice specification with a flashcard/sign
+- Serving versioned sign specifications
+- Persisting optional user practice summaries, such as attempt date, supported sign ID, component feedback, and completion status
+- Storing and persisting user profile preferences, specifically dominant handedness (`left` | `right`), so accuracy scoring is tailored to the signer across sessions
+- Maintaining user privacy preferences
+- Saving raw video only when there is an explicit future product requirement and explicit user consent
+
+The default design should avoid sending or persisting raw webcam footage. Prefer local, in-browser processing and optional persistence of derived landmarks or aggregate feedback only when it provides clear user value.
+
+Store practice results with enough metadata to support future debugging and safe evolution:
+
+- Sign identifier
+- Specification version
+- Evaluation-engine version
+- Capture quality status
+- Derived component results
+- Stored user handedness preference (`left` | `right`)
+- Timestamp
+- Optional user preferences/consent state
+
+### Reference assets
+
+Existing ASL demonstration videos should continue to act as the visual teaching reference.
+
+For practice-enabled signs, support a derived reference asset containing:
+
+- The practice specification
+- Optional precomputed reference landmark data
+- Optional phase annotations
+- Feedback templates and tolerance settings
+- A specification version
+
+Reference assets should be generated or curated offline where practical, rather than recalculated for every user practice session.
+
+## Privacy and Permissions
+
+Webcam use must be explicit and user-controlled.
+
+Requirements:
+
+- Request camera permission only after the user starts practice.
+- Clearly state that camera input is used to provide on-device practice feedback.
+- Do not begin recording automatically without a clear user action.
+- Stop camera tracks immediately when practice mode closes, the user exits, or a session ends.
+- Do not upload or store raw video by default.
+- Show a clear error and recovery path for denied permissions or unavailable cameras.
+- Avoid biometric-identification use cases and avoid representing the feature as identity recognition.
+
+## Reliability Requirements
+
+The practice feature should fail safely and clearly.
+
+It should handle:
+
+- Camera access denied
+- No camera available
+- Browser incompatibility
+- MediaPipe model initialization failures
+- One or both hands not detected
+- Required body anchors not detected
+- Low light or poor framing
+- Hand landmark confidence too low
+- User leaving the camera view
+- Incomplete or extremely short/long capture
+- Unsupported sign configuration
+- Missing reference video or invalid practice specification
+
+In all such cases, maintain the existing flashcard experience and guide the user back to a usable state without losing their study progress.
+
+## Accessibility and UX
+
+The feature should be usable with keyboard navigation, readable labels, visible focus states, and sufficient color contrast. Do not use color alone to communicate pass/fail or feedback severity.
+
+The visual overlay should have a toggle so that users can hide it. Feedback should also be available in text, not only through a visual skeleton or color-coded timeline.
+
+Use neutral, encouraging language. Avoid phrasing such as “wrong sign,” “failed,” or “bad signing.” Prefer “try adjusting,” “not enough visibility to compare,” or “the app detected a difference from this reference.”
+
+## Scope Boundaries
+
+The initial version should support:
+
+- Practice for a small, curated subset of existing flashcards
+- Isolated signs only
+- Desktop/laptop front-facing webcam use
+- Hand and upper-body landmark tracking
+- Rules-based feedback for simple handshape, location, orientation, movement, and coordination properties
+- In-browser processing by default
+- Retry-based learning flow
+
+The initial version should not attempt:
+
+- Full ASL-to-English translation
+- Continuous sentence recognition
+- General ASL proficiency scoring
+- Automatic correctness claims for every sign in the database
+- Automatic feedback about facial grammar or nuanced non-manual markers
+- Training a custom model from user recordings
+- Retaining webcam footage by default
+- Evaluating signs not explicitly configured for practice
+
+## Quality Expectations
+
+The implementation should be modular, typed, and maintainable. Keep computer-vision integration, feature extraction, sign specification parsing, evaluation rules, feedback generation, and UI presentation separate.
+
+Add tests for:
+
+- Sign specification validation
+- Landmark normalization
+- Handshape/angle/distance calculations
+- Motion and phase extraction
+- Rule evaluation and score aggregation
+- Feedback prioritization
+- Camera/session cleanup
+- Unsupported-sign and low-confidence behavior
+
+Document:
+
+- How a developer adds practice support to a flashcard
+- The sign specification schema
+- The supported observable feature categories
+- Current feature limitations
+- Local setup requirements for MediaPipe/browser capabilities
+- Privacy behavior and what data is or is not stored

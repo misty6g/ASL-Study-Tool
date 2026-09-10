@@ -85,6 +85,13 @@
   margin-bottom: 30px;
 }
 
+.video-container video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
 .answer-form {
   width: 100%;
   display: flex;

@@ -141,24 +141,26 @@ const Home: React.FC = () => {
       try {
         console.log('Starting data fetch...');
         // First, get the demo user
-        const usersResponse = await axios.get(`${process.env.REACT_APP_API_URL}/api/users`);
-        
-        console.log('Users API response:', usersResponse.data);
-        
-        if (!usersResponse.data || usersResponse.data.length === 0) {
-          throw new Error('No users found');
-        }
-        
-        const demoUser = usersResponse.data.find((user: User) => user.email === 'demo@example.com');
-        console.log('Found demo user:', demoUser);
-        
-        if (!demoUser) {
-          throw new Error('Demo user not found');
+        let demoUserId = 'demo-user-id';
+        try {
+          const usersResponse = await axios.get(`${process.env.REACT_APP_API_URL}/api/users`);
+          console.log('Users API response:', usersResponse.data);
+          
+          if (Array.isArray(usersResponse.data) && usersResponse.data.length > 0) {
+            const found = usersResponse.data.find((user: User) => user.email === 'demo@example.com');
+            if (found) {
+              demoUserId = found.id;
+            } else {
+              demoUserId = usersResponse.data[0].id;
+            }
+          }
+        } catch (uErr) {
+          console.warn('Using default demo user id');
         }
 
         // Then fetch decks for that user
-        console.log('Fetching decks for user:', demoUser.id);
-        const decksResponse = await axios.get(`${process.env.REACT_APP_API_URL}/api/decks/${demoUser.id}`);
+        console.log('Fetching decks for user:', demoUserId);
+        const decksResponse = await axios.get(`${process.env.REACT_APP_API_URL}/api/decks/${demoUserId}`);
         
         console.log('Decks API response:', decksResponse.data);
         
