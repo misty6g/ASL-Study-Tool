@@ -1,5 +1,8 @@
 # Dependency directories
 node_modules/
+**/node_modules/
+.cache/
+**/.cache/
 
 # Environment files
 .env
@@ -13,6 +16,8 @@ dist/
 build/
 out/
 .next/
+**/build/
+**/dist/
 
 # Python cache and environment
 __pycache__/
