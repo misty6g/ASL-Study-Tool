@@ -5,6 +5,7 @@ A flashcard application for learning American Sign Language (ASL) using video-ba
 ## Features
 
 - Video-based flashcards for ASL learning
+- Fingerspelling practice & speed trainer (inspired by Dr. Bill Vicars' [asl.ms](https://asl.ms/) / Lifeprint)
 - Multiple study decks
 - Flip cards to reveal answers
 - Responsive design

@@ -72,7 +72,7 @@ export function evaluateAttempt(
   // 1. Minimum capture validity check
   if (frames.length < 5) {
     return createInvalidResult(
-      'Not enough frames were captured. Please hold your sign for 1–2 seconds and try again.',
+      'Not enough frames were captured. Please hold your sign for 1-2 seconds and try again.',
       dominantHand,
       frames.length,
       durationMs

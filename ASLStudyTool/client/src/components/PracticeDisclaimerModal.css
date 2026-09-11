@@ -1,66 +1,80 @@
+/**
+ * PracticeDisclaimerModal.css
+ * ASL Study Tool - Camera/privacy disclaimer dialog
+ * Token-based, WCAG AA, mobile-first, tactile press states
+ * Class names match PracticeDisclaimerModal.tsx exactly.
+ */
+
+/* ==========================================================================
+   Backdrop
+   ========================================================================== */
+
 .disclaimer-modal-backdrop {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(10, 15, 29, 0.82);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  inset: 0;
+  width: 100%;
+  height: 100dvh;
+  background: var(--surface-overlay);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 9999999;
+  z-index: var(--z-modal-backdrop);
   padding: 16px;
-  animation: disclaimerFadeIn 0.2s ease-out;
+  overflow-y: auto;
+  box-sizing: border-box;
 }
 
-@keyframes disclaimerFadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
+/* ==========================================================================
+   Modal card
+   ========================================================================== */
 
 .disclaimer-modal-card {
-  background: #151b28;
-  color: #f1f5f9;
-  border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.05);
-  max-width: 540px;
+  background: var(--surface-modal);
+  color: var(--text-primary);
+  border-radius: var(--radius-modal);
+  border: 1px solid var(--surface-border);
+  box-shadow: var(--shadow-modal);
+  max-width: 480px;
   width: 100%;
-  max-height: 90vh;
+  max-height: 90dvh;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  animation: disclaimerScaleIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: disclaimerFadeIn 0.2s var(--ease-spring);
 }
 
-@keyframes disclaimerScaleIn {
+@keyframes disclaimerFadeIn {
   from {
-    transform: scale(0.93) translateY(10px);
     opacity: 0;
+    transform: scale(0.97);
   }
   to {
-    transform: scale(1) translateY(0);
     opacity: 1;
+    transform: scale(1);
   }
 }
+
+/* ==========================================================================
+   Header
+   ========================================================================== */
 
 .disclaimer-header {
   padding: 20px 24px 16px;
   display: flex;
   align-items: flex-start;
   gap: 14px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  border-bottom: 1px solid var(--surface-border);
 }
 
 .disclaimer-icon-circle {
-  font-size: 1.6rem;
-  background: rgba(245, 158, 11, 0.15);
-  border: 1px solid rgba(245, 158, 11, 0.3);
-  width: 44px;
-  height: 44px;
-  border-radius: 10px;
+  font-size: 1.25rem;
+  background: var(--color-warning-subtle);
+  border: 1px solid var(--color-warning-border);
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-pill);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -72,160 +86,281 @@
 }
 
 .disclaimer-header-text h2 {
-  margin: 0 0 4px 0;
-  font-size: 1.25rem;
-  color: #f8fafc;
-  font-weight: 700;
+  margin: 0 0 4px;
+  font-size: var(--text-xl);
+  color: var(--text-primary);
+  font-weight: var(--font-bold);
 }
 
 .disclaimer-subtitle {
   margin: 0;
-  font-size: 0.85rem;
-  color: #94a3b8;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
 }
 
 .disclaimer-close-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-pill);
   background: transparent;
   border: none;
-  color: #64748b;
-  font-size: 1.5rem;
+  color: var(--text-secondary);
   cursor: pointer;
-  line-height: 1;
-  padding: 4px;
-  border-radius: 6px;
-  transition: color 0.15s, background 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+  transition: background var(--duration-fast) var(--ease-smooth),
+              color var(--duration-fast) var(--ease-smooth),
+              transform var(--duration-fast) var(--ease-spring);
 }
 
 .disclaimer-close-btn:hover {
-  color: #f8fafc;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--surface-card);
+  color: var(--text-primary);
 }
+
+.disclaimer-close-btn:active {
+  transform: scale(0.9);
+}
+
+/* ==========================================================================
+   Body
+   ========================================================================== */
 
 .disclaimer-body {
   padding: 20px 24px;
   display: flex;
   flex-direction: column;
   gap: 16px;
-  font-size: 0.9rem;
-  line-height: 1.5;
 }
 
+/* ==========================================================================
+   Warning callout
+   ========================================================================== */
+
 .disclaimer-callout {
-  background: rgba(245, 158, 11, 0.08);
-  border-left: 3px solid #f59e0b;
+  background: var(--color-warning-subtle);
+  border: 1px solid var(--color-warning-border);
+  border-radius: var(--radius-btn);
   padding: 12px 14px;
-  border-radius: 0 8px 8px 0;
+  color: var(--color-warning-text);
+  font-size: var(--text-sm);
+  line-height: 1.45;
 }
 
 .disclaimer-callout strong {
-  color: #fbbf24;
   display: block;
   margin-bottom: 4px;
-  font-size: 0.92rem;
+  font-weight: var(--font-semibold);
+  color: var(--color-warning-text);
 }
 
 .disclaimer-callout p {
   margin: 0;
-  color: #cbd5e1;
-  font-size: 0.85rem;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
 }
+
+/* ==========================================================================
+   Points list
+   ========================================================================== */
 
 .disclaimer-points {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .disclaimer-point {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
-  background: rgba(255, 255, 255, 0.03);
+  gap: 10px;
+  background: var(--surface-bg-subtle);
   padding: 12px;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-btn);
+  border: 1px solid var(--surface-border);
 }
 
 .point-icon {
-  font-size: 1.25rem;
+  font-size: 20px;
   flex-shrink: 0;
   margin-top: 2px;
+  line-height: 1;
 }
 
 .disclaimer-point strong {
   display: block;
-  color: #f1f5f9;
-  font-size: 0.88rem;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
   margin-bottom: 2px;
 }
 
 .disclaimer-point p {
   margin: 0;
-  color: #94a3b8;
-  font-size: 0.82rem;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
   line-height: 1.4;
 }
+
+/* ==========================================================================
+   Checkbox label
+   ========================================================================== */
 
 .disclaimer-checkbox-label {
   display: flex;
   align-items: center;
   gap: 10px;
   cursor: pointer;
-  margin-top: 6px;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
   user-select: none;
-  font-size: 0.85rem;
-  color: #cbd5e1;
 }
 
 .disclaimer-checkbox-label input[type="checkbox"] {
-  width: 17px;
-  height: 17px;
-  accent-color: #3b82f6;
+  accent-color: var(--accent-primary);
+  width: 16px;
+  height: 16px;
   cursor: pointer;
+  flex-shrink: 0;
 }
 
+/* ==========================================================================
+   Footer
+   ========================================================================== */
+
 .disclaimer-footer {
-  padding: 16px 24px 20px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--surface-border);
   display: flex;
   justify-content: flex-end;
-  gap: 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
-  background: rgba(0, 0, 0, 0.15);
+  gap: 10px;
+  background: var(--surface-bg-subtle);
 }
+
+/* ==========================================================================
+   Cancel button - ghost secondary style
+   ========================================================================== */
 
 .btn-disclaimer-cancel {
   background: transparent;
-  color: #94a3b8;
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--text-secondary);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-btn);
   padding: 10px 18px;
-  border-radius: 8px;
-  font-size: 0.9rem;
-  font-weight: 500;
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background var(--duration-fast) var(--ease-smooth),
+              color var(--duration-fast) var(--ease-smooth),
+              border-color var(--duration-fast) var(--ease-smooth),
+              transform var(--duration-fast) var(--ease-spring);
 }
 
 .btn-disclaimer-cancel:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: #f8fafc;
+  background: var(--surface-card);
+  color: var(--text-primary);
+  border-color: var(--surface-border-hover);
+  transform: var(--hover-lift);
 }
+
+.btn-disclaimer-cancel:active {
+  transform: scale(var(--press-scale));
+}
+
+/* ==========================================================================
+   Confirm button - accent-primary style
+   ========================================================================== */
 
 .btn-disclaimer-confirm {
-  background: #2563eb;
-  color: #fff;
+  background: var(--accent-primary);
+  color: var(--accent-foreground);
   border: none;
+  border-radius: var(--radius-btn);
   padding: 10px 22px;
-  border-radius: 8px;
-  font-size: 0.92rem;
-  font-weight: 600;
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
   cursor: pointer;
-  transition: background 0.15s, transform 0.1s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: var(--shadow-accent);
+  transition: background var(--duration-fast) var(--ease-smooth),
+              box-shadow var(--duration-fast) var(--ease-smooth),
+              transform var(--duration-fast) var(--ease-spring);
 }
 
-.btn-disclaimer-confirm:hover {
-  background: #1d4ed8;
+.btn-disclaimer-confirm:hover:not(:disabled) {
+  background: var(--accent-hover);
+  box-shadow: var(--shadow-accent-hover);
+  transform: var(--hover-lift);
 }
 
-.btn-disclaimer-confirm:active {
-  transform: scale(0.98);
+.btn-disclaimer-confirm:active:not(:disabled) {
+  background: var(--accent-active);
+  transform: scale(var(--press-scale));
+}
+
+.btn-disclaimer-confirm:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* ==========================================================================
+   Mobile - max-width 768px
+   ========================================================================== */
+
+@media (max-width: 768px) {
+  .disclaimer-modal-card {
+    max-width: 100%;
+  }
+
+  .disclaimer-footer {
+    flex-wrap: wrap;
+  }
+
+  .btn-disclaimer-confirm,
+  .btn-disclaimer-cancel {
+    flex: 1;
+    justify-content: center;
+  }
+}
+
+/* ==========================================================================
+   Prefers-reduced-motion
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .disclaimer-modal-card {
+    animation: none !important;
+  }
+
+  .disclaimer-close-btn,
+  .btn-disclaimer-confirm,
+  .btn-disclaimer-cancel {
+    transition: none !important;
+  }
+
+  .disclaimer-close-btn:active,
+  .btn-disclaimer-confirm:hover,
+  .btn-disclaimer-confirm:active,
+  .btn-disclaimer-cancel:hover,
+  .btn-disclaimer-cancel:active {
+    transform: none !important;
+  }
+}
+
+/* ==========================================================================
+   Prefers-reduced-transparency
+   ========================================================================== */
+
+@media (prefers-reduced-transparency: reduce) {
+  .disclaimer-modal-backdrop {
+    background: rgba(11, 15, 23, 0.96) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
 }

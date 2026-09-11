@@ -40,7 +40,7 @@ Allow: /login
 Allow: /signup
 
 # -----------------------------------------------------------------------
-# Crawl delay — be polite to the server
+# Crawl delay - be polite to the server
 # -----------------------------------------------------------------------
 Crawl-delay: 10
 

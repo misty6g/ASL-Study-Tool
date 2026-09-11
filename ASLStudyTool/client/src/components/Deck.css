@@ -1,115 +1,358 @@
+/**
+ * Deck.css - ASL Study Tool
+ * Deck view: sticky header, cards grid, loading / error states.
+ * Token source: styles/tokens.css
+ * Class names matched exactly to Deck.tsx usage.
+ * Rules: ZERO !important (outside reduced-motion), ZERO 100vw, ZERO em-dashes.
+ * Mobile-first, WCAG AA contrast, tactile press / hover-lift states.
+ */
+
+/* ==========================================================================
+   1. Page Container
+   ========================================================================== */
+
 .deck-container {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
-  background-color: #2c2c2c;
-  position: relative;
+  width: 100%;
+  background-color: var(--surface-bg);
+  min-height: 100dvh;
+  padding-top: var(--nav-height);
+  box-sizing: border-box;
 }
 
-.cards-grid {
+/* ==========================================================================
+   2. Sticky Deck Header
+   ========================================================================== */
+
+.deck-header {
+  position: sticky;
+  top: var(--nav-height);
+  z-index: var(--z-sticky);
+  background-color: var(--surface-bg-subtle);
+  border-bottom: 1px solid var(--surface-border);
+  padding: 12px 20px;
   display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 20px;
-  padding: 20px;
-  padding-top: 80px; /* Increased space for the header buttons */
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
+
+/* ==========================================================================
+   3. Back Button Area
+   ========================================================================== */
 
 .back-button-container {
-  position: fixed;
-  top: 20px;
-  left: 20px;
-  z-index: 1000;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
 }
 
-/* New styles for deck actions */
+.back-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--surface-border);
+  background-color: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: var(--text-lg);
+  user-select: none;
+  transition:
+    background-color var(--duration-fast) var(--ease-smooth),
+    border-color var(--duration-fast) var(--ease-smooth),
+    color var(--duration-fast) var(--ease-smooth),
+    transform var(--duration-fast) var(--ease-spring);
+}
+
+.back-button:hover {
+  background-color: var(--surface-card);
+  border-color: var(--surface-border-hover);
+  color: var(--text-primary);
+  transform: translateY(-1px);
+}
+
+.back-button:active {
+  transform: scale(0.98);
+}
+
+.back-button:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+/* ==========================================================================
+   4. Deck Title
+   ========================================================================== */
+
+.deck-title {
+  color: var(--text-primary);
+  font-size: var(--text-2xl);
+  font-weight: var(--font-bold);
+  line-height: var(--leading-2xl);
+  margin: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: center;
+}
+
+/* Starred-only page heading variant */
+.deck-title.page-heading {
+  font-size: var(--text-3xl);
+  line-height: var(--leading-3xl);
+  text-align: center;
+  padding: 24px 20px 0;
+  margin: 0;
+  display: block;
+}
+
+/* ==========================================================================
+   5. Deck Actions
+   ========================================================================== */
+
 .deck-actions {
-  position: fixed;
-  top: 20px;
-  right: 20px;
-  z-index: 1000;
   display: flex;
-  gap: 10px;
+  align-items: center;
+  flex-shrink: 0;
 }
 
 .action-buttons {
   display: flex;
-  gap: 10px;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
 }
 
+/* ==========================================================================
+   6. Deck Buttons
+   ========================================================================== */
+
 .deck-button {
-  padding: 10px 20px;
-  background-color: #8a2be2;
-  color: white;
-  border: none;
-  border-radius: 25px;
-  font-size: 16px;
-  font-weight: bold;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 16px;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  line-height: var(--leading-sm);
+  border-radius: var(--radius-btn);
+  border: 1px solid var(--surface-border);
+  background-color: var(--surface-card);
+  color: var(--text-primary);
   cursor: pointer;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-  transition: transform 0.2s, background-color 0.2s;
+  text-decoration: none;
+  white-space: nowrap;
+  user-select: none;
+  box-shadow: var(--shadow-sm);
+  transition:
+    background-color var(--duration-fast) var(--ease-smooth),
+    border-color var(--duration-fast) var(--ease-smooth),
+    box-shadow var(--duration-fast) var(--ease-smooth),
+    transform var(--duration-fast) var(--ease-spring);
 }
 
 .deck-button:hover {
-  transform: scale(1.05);
-  background-color: #7823c9;
+  background-color: var(--surface-card-hover);
+  border-color: var(--surface-border-hover);
+  transform: translateY(-1px);
 }
 
-.deck-button:focus {
-  outline: none;
+.deck-button:active {
+  transform: scale(0.98);
 }
 
-.starred-test-button {
-  background-color: #00b8d4;
+.deck-button:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
 }
 
-.starred-test-button:hover {
-  background-color: #00a0b8;
+/* Starred test button modifier (amber) */
+.deck-button.starred-test-button {
+  background-color: var(--accent-star-subtle);
+  color: var(--accent-star);
+  border: 1px solid var(--accent-star-subtle-border);
+  box-shadow: var(--shadow-star);
 }
 
-.back-button {
-  width: 50px;
-  height: 50px;
-  background-color: white;
-  color: #2c2c2c;
-  border: none;
-  border-radius: 50%;
-  font-size: 24px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-  transition: transform 0.2s, background-color 0.2s;
+.deck-button.starred-test-button:hover {
+  background-color: var(--accent-star-subtle-hover);
+  border-color: var(--accent-star-subtle-border);
 }
 
-.back-button:hover {
-  transform: scale(1.1);
-  background-color: #f0f0f0;
+/* Debug button modifier (subtle/secondary) */
+.deck-button.debug-button {
+  background-color: transparent;
+  color: var(--text-muted);
+  border-color: var(--surface-border-subtle);
+  box-shadow: none;
+  font-size: var(--text-xs);
+  padding: 6px 12px;
 }
 
-.back-button:focus {
-  outline: none;
+.deck-button.debug-button:hover {
+  background-color: var(--surface-card);
+  color: var(--text-secondary);
+  border-color: var(--surface-border);
 }
 
-.loading-container,
-.error-container {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: 100vh;
-  background-color: #2c2c2c;
-  color: white;
-  font-size: 20px;
+/* ==========================================================================
+   7. Cards Grid
+   ========================================================================== */
+
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 24px;
+  padding: 24px;
+  max-width: var(--container-max);
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
+  box-sizing: border-box;
 }
 
-.error-container {
-  color: #ff6b6b;
+/* ==========================================================================
+   8. Infinite Scroll Sentinel
+   ========================================================================== */
+
+.load-more-trigger {
+  height: 40px;
+  width: 100%;
+  flex-shrink: 0;
 }
 
-.deck-title {
+.loading-indicator {
   text-align: center;
-  margin: 10px 0 20px;
-  color: white;
-  font-size: 2rem;
-} 
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  padding: 16px;
+}
+
+/* ==========================================================================
+   9. Loading State
+   ========================================================================== */
+
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  min-height: 60dvh;
+  background-color: var(--surface-bg);
+  color: var(--text-primary);
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+.loading-spinner {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-pill);
+  border: 3px solid var(--surface-border);
+  border-top-color: var(--accent-primary);
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ==========================================================================
+   10. Error State
+   ========================================================================== */
+
+.error-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  min-height: 60dvh;
+  background-color: var(--surface-bg);
+  color: var(--text-primary);
+  padding: 24px;
+  box-sizing: border-box;
+  text-align: center;
+}
+
+.error-container p {
+  color: var(--color-error-text);
+  font-size: var(--text-base);
+  margin: 0;
+}
+
+/* ==========================================================================
+   11. Mobile Overrides (< 768px)
+   ========================================================================== */
+
+@media (max-width: 767px) {
+  .deck-header {
+    padding: 10px 16px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .deck-title {
+    font-size: var(--text-xl);
+    line-height: var(--leading-xl);
+    text-align: left;
+  }
+
+  .action-buttons {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .cards-grid {
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+    padding: 16px;
+  }
+
+  .deck-title.page-heading {
+    font-size: var(--text-2xl);
+    padding: 20px 16px 0;
+  }
+}
+
+/* ==========================================================================
+   12. Prefers-Reduced-Motion
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .deck-button,
+  .back-button {
+    transition: none !important;
+  }
+
+  .deck-button:hover,
+  .back-button:hover {
+    transform: none !important;
+  }
+
+  .deck-button:active,
+  .back-button:active {
+    transform: none !important;
+  }
+
+  .loading-spinner {
+    animation: none !important;
+    opacity: 0.8;
+  }
+}

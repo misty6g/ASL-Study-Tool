@@ -1,28 +1,54 @@
+/**
+ * Flashcard.css - ASL Study Tool
+ * 3-D flip card, star toggle, practice button, video/answer surfaces.
+ * Token source: styles/tokens.css
+ * Rules: ZERO !important (outside reduced-motion), ZERO 100vw, ZERO em-dashes.
+ * Mobile-first, WCAG AA contrast, tactile press / hover-lift states.
+ */
+
+/* ==========================================================================
+   1. Card Container (perspective host)
+   ========================================================================== */
+
 .flashcard-container {
-  width: 320px;
-  height: 240px;
-  margin: 20px;
-  perspective: 1000px;
+  width: 100%;
+  max-width: 360px;
+  min-height: 260px;
+  perspective: 1200px;
   position: relative;
-  transition: all 0.3s ease;
+  margin-left: auto;
+  margin-right: auto;
+  box-sizing: border-box;
 }
 
-/* Highlight styling with purple glow */
+/* Highlighted ring (e.g. search match) */
 .flashcard-container.highlighted {
-  transform: scale(1.05);
-  box-shadow: 0 0 25px 12px rgba(163, 73, 255, 0.95),
-              0 0 45px 18px rgba(138, 43, 226, 0.85);
-  z-index: 5;
-  border-radius: 10px;
-  outline: 3px solid #c183ff;
+  box-shadow:
+    0 0 0 3px var(--accent-primary),
+    0 0 24px rgba(99, 102, 241, 0.4);
+  border-radius: var(--radius-card);
 }
+
+/* Starred border treatment */
+.flashcard-container.starred .flashcard-front,
+.flashcard-container.starred .flashcard-back {
+  border-color: var(--accent-star-subtle-border);
+  box-shadow:
+    var(--shadow-card),
+    0 0 0 1px var(--accent-star-subtle-border);
+}
+
+/* ==========================================================================
+   2. Flip Mechanism
+   ========================================================================== */
 
 .flashcard {
   width: 100%;
   height: 100%;
+  min-height: 260px;
   position: relative;
   transform-style: preserve-3d;
-  transition: transform 0.6s;
+  transition: transform 0.55s cubic-bezier(0.4, 0, 0.2, 1);
   cursor: pointer;
 }
 
@@ -30,132 +56,168 @@
   transform: rotateY(180deg);
 }
 
+/* Pointer-event isolation so only the visible face is interactive */
+.flashcard:not(.flipped) .flashcard-back {
+  pointer-events: none;
+}
+
+.flashcard.flipped .flashcard-front {
+  pointer-events: none;
+}
+
 .flashcard-inner {
   position: relative;
   width: 100%;
   height: 100%;
   text-align: center;
-  transition: transform 0.6s;
   transform-style: preserve-3d;
 }
+
+/* ==========================================================================
+   3. Card Faces
+   ========================================================================== */
 
 .flashcard-front,
 .flashcard-back {
   position: absolute;
+  top: 0;
+  left: 0;
   width: 100%;
   height: 100%;
+  min-height: 260px;
   backface-visibility: hidden;
-  border-radius: 10px;
-  box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-  background-color: cornflowerblue;
-  color: white;
+  -webkit-backface-visibility: hidden;
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  background-color: var(--surface-card);
+  border: 1px solid var(--surface-border);
+  color: var(--text-primary);
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  box-sizing: border-box;
+  transition:
+    box-shadow var(--duration-normal) var(--ease-smooth),
+    border-color var(--duration-normal) var(--ease-smooth);
 }
 
+/* Hover lift: only on the currently visible face */
+.flashcard:not(.flipped) .flashcard-front:hover {
+  box-shadow: var(--shadow-card-hover);
+  border-color: var(--surface-border-hover);
+}
+
+.flashcard.flipped .flashcard-back:hover {
+  box-shadow: var(--shadow-card-hover);
+  border-color: var(--surface-border-hover);
+}
+
+/* Back face sits behind the front at rest */
 .flashcard-back {
   transform: rotateY(180deg);
-  font-size: 24px;
-  font-weight: bold;
 }
 
-/* Back button styles */
-.back-button-container {
-  position: absolute;
-  top: -10px;
-  left: -10px;
-  z-index: 10;
-  cursor: pointer;
-}
+/* ==========================================================================
+   4. Card Content Layout
+   ========================================================================== */
 
-.back-button {
-  width: 40px;
-  height: 40px;
-  background-color: white;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-  font-size: 24px;
-  font-weight: bold;
-  color: cornflowerblue;
-  transition: transform 0.2s, background-color 0.2s;
-}
-
-.back-button:hover {
-  transform: scale(1.1);
-  background-color: #f0f0f0;
-}
-
-/* New card content layout */
 .card-content {
   display: flex;
   flex-direction: column;
   width: 100%;
   height: 100%;
-  padding: 10px;
+  padding: 12px;
   box-sizing: border-box;
 }
 
 .card-title {
-  font-weight: bold;
-  margin-bottom: 5px;
-  font-size: 18px;
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  color: var(--text-secondary);
+  margin: 0 0 8px 0;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wider);
+  line-height: var(--leading-sm);
+  text-align: left;
 }
+
+/* ==========================================================================
+   5. Video Surface
+   ========================================================================== */
 
 .video-content {
   flex: 1;
-  border-radius: 5px;
+  border-radius: 8px;
   overflow: hidden;
-  background-color: rgba(0, 0, 0, 0.2);
+  background-color: #000;
   position: relative;
   cursor: default;
-  margin: 5px 0;
+  margin: 6px 0;
 }
 
-.video-content video {
+.video-content video,
+.video-content iframe {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   display: block;
+  border: 0;
 }
+
+/* ==========================================================================
+   6. Answer Surface
+   ========================================================================== */
 
 .answer-content {
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 28px;
-  font-weight: bold;
+  font-size: var(--text-3xl);
+  font-weight: var(--font-bold);
+  color: var(--text-primary);
+  text-align: center;
+  padding: 8px;
+  line-height: var(--leading-3xl);
 }
+
+/* ==========================================================================
+   7. Card Instruction Label
+   ========================================================================== */
 
 .card-instruction {
-  font-size: 12px;
-  margin-top: 5px;
-  opacity: 0.8;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  margin-top: 6px;
+  text-align: center;
+  line-height: var(--leading-xs);
 }
 
+/* ==========================================================================
+   8. Video Loading Overlay
+   ========================================================================== */
+
 .video-loading {
+  position: absolute;
+  inset: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 100%;
-  height: 100%;
-  background-color: rgba(0, 0, 0, 0.3);
+  gap: 12px;
+  background-color: rgba(0, 0, 0, 0.5);
+  border-radius: 8px;
 }
 
-.loading-spinner {
-  width: 40px;
-  height: 40px;
-  border: 4px solid rgba(255, 255, 255, 0.3);
-  border-radius: 50%;
-  border-top-color: white;
-  animation: spin 1s ease-in-out infinite;
-  margin-bottom: 10px;
+.video-loading .loading-spinner {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-pill);
+  border: 3px solid rgba(255, 255, 255, 0.2);
+  border-top-color: #ffffff;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
 }
 
 @keyframes spin {
@@ -164,139 +226,263 @@
   }
 }
 
+/* ==========================================================================
+   9. Video Error Overlay
+   ========================================================================== */
+
 .video-error {
+  position: absolute;
+  inset: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 100%;
-  height: 100%;
-  background-color: rgba(0, 0, 0, 0.3);
-  padding: 20px;
+  gap: 8px;
+  background-color: rgba(0, 0, 0, 0.5);
+  border-radius: 8px;
+  padding: 12px;
+  box-sizing: border-box;
+}
+
+.video-error p {
+  color: var(--color-error-text);
+  font-size: var(--text-sm);
   text-align: center;
+  margin: 0;
+  line-height: var(--leading-sm);
 }
 
 .retry-button {
-  margin-top: 10px;
-  padding: 8px 16px;
-  background-color: white;
-  color: cornflowerblue;
-  border: none;
-  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 14px;
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  line-height: var(--leading-xs);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--accent-primary);
+  background-color: var(--accent-primary);
+  color: var(--accent-foreground);
   cursor: pointer;
-  font-weight: bold;
-  transition: background-color 0.2s;
+  white-space: nowrap;
+  transition:
+    background-color var(--duration-fast) var(--ease-smooth),
+    transform var(--duration-fast) var(--ease-spring);
 }
 
 .retry-button:hover {
-  background-color: #f0f0f0;
+  background-color: var(--accent-hover);
+  transform: translateY(-1px);
 }
 
-/* Prevent interaction with the back side when viewing front */
-.flashcard:not(.flipped) .flashcard-back {
-  pointer-events: none;
+.retry-button:active {
+  background-color: var(--accent-active);
+  transform: scale(0.98);
 }
 
-/* Prevent interaction with the front side when viewing back */
-.flashcard.flipped .flashcard-front {
-  pointer-events: none;
+.retry-button:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
 }
 
-/* Star Button Styling */
+/* ==========================================================================
+   10. Star Button
+   ========================================================================== */
+
 .star-button {
-  background: none;
-  border: none;
-  font-size: 24px;
-  cursor: pointer;
-  color: #d8d8d8;
-  transition: color 0.3s ease, transform 0.2s ease;
-  outline: none;
   position: absolute;
-  top: 5px;
-  right: 10px;
-  z-index: 20;
-  padding: 5px;
-  width: 40px;
-  height: 40px;
+  top: 8px;
+  right: 8px;
+  z-index: var(--z-card);
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-pill);
+  background-color: transparent;
+  border: none;
+  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.3);
+  color: var(--text-muted);
+  font-size: 20px;
   backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transition:
+    color var(--duration-fast) var(--ease-smooth),
+    transform 200ms var(--ease-spring);
 }
 
-.flashcard-front .star-button, .flashcard-back .star-button {
-  backface-visibility: hidden;
+.star-button:hover {
+  color: var(--accent-star);
+  transform: scale(1.15);
 }
 
+.star-button:active {
+  transform: scale(0.9);
+}
+
+.star-button:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.star-button.starred {
+  color: var(--accent-star);
+  text-shadow: 0 0 8px rgba(245, 158, 11, 0.5);
+}
+
+/* Back-face star counter-rotated to appear upright after face flip */
 .flashcard-back .star-button {
   transform: rotateY(180deg);
 }
 
-.star-button:hover {
-  transform: scale(1.2);
-}
-
 .flashcard-back .star-button:hover {
-  transform: rotateY(180deg) scale(1.2);
+  color: var(--accent-star);
+  transform: rotateY(180deg) scale(1.15);
 }
 
-.star-button.starred {
-  color: #8a2be2;
-  text-shadow: 0 0 4px rgba(138, 43, 226, 0.5);
+.flashcard-back .star-button:active {
+  transform: rotateY(180deg) scale(0.9);
 }
 
-/* Style for unstarred hover state */
-.star-button:not(.starred):hover {
-  color: #cab3e9;
-}
+/* ==========================================================================
+   11. Practice Button
+   ========================================================================== */
 
-/* Starred card styles */
-.flashcard-container.starred .flashcard-front,
-.flashcard-container.starred .flashcard-back {
-  background-color: #00b8d4;
-}
-
-/* When a card is both highlighted and starred, prioritize the highlighting */
-.flashcard-container.highlighted.starred {
-  box-shadow: 0 0 25px 12px rgba(163, 73, 255, 0.95),
-              0 0 45px 18px rgba(138, 43, 226, 0.85);
-}
-
-/* Practice Button Styling */
 .practice-button {
-  background: rgba(15, 23, 42, 0.8);
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  color: #ffffff;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
   position: absolute;
   top: 8px;
-  left: 10px;
-  z-index: 25;
-  padding: 4px 10px;
-  border-radius: 14px;
-  display: flex;
+  left: 8px;
+  z-index: 11;
+  display: inline-flex;
   align-items: center;
   gap: 4px;
-  backdrop-filter: blur(4px);
+  padding: 4px 10px;
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  line-height: var(--leading-xs);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--surface-border-hover);
+  background-color: rgba(11, 15, 23, 0.75);
+  color: var(--text-primary);
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  white-space: nowrap;
   backface-visibility: hidden;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  -webkit-backface-visibility: hidden;
+  transition:
+    background-color var(--duration-fast) var(--ease-smooth),
+    border-color var(--duration-fast) var(--ease-smooth),
+    transform var(--duration-fast) var(--ease-spring);
 }
 
+.practice-button:hover {
+  background-color: var(--accent-primary);
+  border-color: transparent;
+}
+
+.practice-button:active {
+  transform: scale(0.98);
+}
+
+.practice-button:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+/* Back-face practice button counter-rotation */
 .flashcard-back .practice-button {
   transform: rotateY(180deg);
 }
 
-.practice-button:hover {
-  background: #2563eb;
-  border-color: #60a5fa;
-  transform: scale(1.05);
+.flashcard-back .practice-button:hover {
+  background-color: var(--accent-primary);
+  border-color: transparent;
+  transform: rotateY(180deg);
 }
 
-.flashcard-back .practice-button:hover {
-  transform: rotateY(180deg) scale(1.05);
+.flashcard-back .practice-button:active {
+  transform: rotateY(180deg) scale(0.98);
 }
- 
+
+/* ==========================================================================
+   12. Mobile Overrides (< 768px)
+   ========================================================================== */
+
+@media (max-width: 767px) {
+  .flashcard-container {
+    max-width: 100%;
+    min-height: 240px;
+  }
+
+  .flashcard,
+  .flashcard-front,
+  .flashcard-back {
+    min-height: 240px;
+  }
+}
+
+/* ==========================================================================
+   13. Prefers-Reduced-Motion
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .flashcard {
+    transition: none !important;
+  }
+
+  .flashcard-front,
+  .flashcard-back {
+    transition: none !important;
+  }
+
+  .star-button,
+  .practice-button,
+  .retry-button {
+    transition: none !important;
+  }
+
+  .star-button:hover,
+  .star-button:active {
+    transform: none !important;
+  }
+
+  /* Preserve back-face counter-rotation even with reduced motion */
+  .flashcard-back .star-button {
+    transform: rotateY(180deg) !important;
+  }
+
+  .flashcard-back .star-button:hover,
+  .flashcard-back .star-button:active {
+    transform: rotateY(180deg) !important;
+  }
+
+  .flashcard-back .practice-button {
+    transform: rotateY(180deg) !important;
+  }
+
+  .flashcard-back .practice-button:hover,
+  .flashcard-back .practice-button:active {
+    transform: rotateY(180deg) !important;
+  }
+
+  .retry-button:hover,
+  .retry-button:active {
+    transform: none !important;
+  }
+
+  .practice-button:hover,
+  .practice-button:active {
+    transform: none !important;
+  }
+
+  .video-loading .loading-spinner {
+    animation: none !important;
+    opacity: 0.7;
+  }
+}

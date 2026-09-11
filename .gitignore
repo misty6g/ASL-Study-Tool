@@ -3,13 +3,14 @@ node_modules/
 **/node_modules/
 .cache/
 **/.cache/
+ASLStudyTool/Videos/.cache/
 
 # Environment files
 .env
-.env.local
-.env.production
-.env.development
-.env.staging
+.env.*
+**/.env
+**/.env.*
+*.env
 
 # Build outputs
 dist/
@@ -35,3 +36,9 @@ Thumbs.db
 *.pem
 *.key
 *.pub
+
+.agents
+
+# Security Audit Reports
+SECURITY_AUDIT.md
+**/SECURITY_AUDIT.md

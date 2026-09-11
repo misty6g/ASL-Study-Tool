@@ -13,6 +13,7 @@
   "license": "ISC",
   "description": "Backend API server for ASL Study Tool",
   "dependencies": {
+    "@supabase/supabase-js": "^2.49.4",
     "axios": "^1.16.1",
     "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.6",

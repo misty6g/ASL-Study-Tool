@@ -4,6 +4,7 @@ import App from './App';
 
 test('renders application layout with footer', () => {
   render(<App />);
-  const footerElement = screen.getByText(/gyanmistry/i);
-  expect(footerElement).toBeInTheDocument();
+  const footerElements = screen.getAllByText(/gyanmistry/i);
+  expect(footerElements.length).toBeGreaterThanOrEqual(1);
+  expect(footerElements[0]).toBeInTheDocument();
 });

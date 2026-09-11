@@ -1,45 +1,56 @@
-/* PracticeModal.css */
+/**
+ * PracticeModal.css
+ * ASL Study Tool - Webcam practice feedback modal
+ * Token-based, WCAG AA, mobile-first, tactile press states
+ */
+
+/* ==========================================================================
+   Backdrop
+   ========================================================================== */
+
 .practice-modal-backdrop {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  width: 100vw;
-  height: 100vh;
-  background-color: rgba(10, 15, 25, 0.88);
+  inset: 0;
+  width: 100%;
+  height: 100dvh;
+  background: var(--surface-overlay);
   backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 999999;
-  padding: 20px;
+  z-index: var(--z-modal-backdrop);
+  padding: 16px;
   overflow-y: auto;
   box-sizing: border-box;
 }
 
+/* ==========================================================================
+   Container
+   ========================================================================== */
+
 .practice-modal-container {
-  background: #181c24;
-  color: #f0f3f8;
-  border-radius: 16px;
+  background: var(--surface-modal);
+  color: var(--text-primary);
+  border-radius: var(--radius-modal);
+  border: 1px solid var(--surface-border);
   width: 100%;
-  max-width: 980px;
-  max-height: 92vh;
+  max-width: 1080px;
+  max-height: 94dvh;
   margin: auto;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.85);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: var(--shadow-modal);
   overflow: hidden;
-  animation: modalFadeIn 0.25s ease-out;
-  position: relative;
-  z-index: 1000000;
+  animation: modalFadeIn 0.2s var(--ease-spring);
+  z-index: var(--z-modal);
+  box-sizing: border-box;
 }
 
 @keyframes modalFadeIn {
   from {
     opacity: 0;
-    transform: scale(0.96);
+    transform: scale(0.97);
   }
   to {
     opacity: 1;
@@ -47,209 +58,224 @@
   }
 }
 
+/* ==========================================================================
+   Header
+   ========================================================================== */
+
 .practice-modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 24px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  background: #1e2430;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--surface-border);
+  background: var(--surface-bg-subtle);
+  flex-shrink: 0;
+}
+
+.practice-title-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .practice-title-group h2 {
   margin: 0;
-  font-size: 1.35rem;
-  font-weight: 700;
-  color: #60a5fa;
+  font-size: var(--text-lg);
+  font-weight: var(--font-bold);
+  color: var(--text-primary);
 }
 
 .practice-sign-badge {
-  font-size: 0.8rem;
-  background: rgba(96, 165, 250, 0.2);
-  color: #93c5fd;
+  font-size: var(--text-xs);
+  background: var(--accent-subtle);
+  color: var(--accent-text);
+  border: 1px solid var(--accent-subtle-border);
   padding: 3px 8px;
-  border-radius: 6px;
-  margin-left: 8px;
+  border-radius: var(--radius-pill);
 }
 
 .practice-header-controls {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
 }
+
+/* ==========================================================================
+   Handedness Selector
+   ========================================================================== */
 
 .handedness-selector {
   display: flex;
   align-items: center;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--surface-input);
   padding: 4px;
-  border-radius: 8px;
-  font-size: 0.85rem;
+  border-radius: var(--radius-btn);
+  gap: 2px;
+  border: 1px solid var(--surface-border);
 }
 
 .handedness-selector span {
-  margin-right: 8px;
-  color: #94a3b8;
-  font-weight: 500;
-  padding-left: 6px;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  padding: 0 6px;
 }
 
 .hand-btn {
   background: transparent;
   border: none;
-  color: #cbd5e1;
-  padding: 4px 10px;
-  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  padding: 6px 12px;
+  border-radius: 7px;
   cursor: pointer;
-  font-size: 0.82rem;
-  font-weight: 600;
-  transition: all 0.15s ease;
+  transition: background var(--duration-fast) var(--ease-smooth),
+              color var(--duration-fast) var(--ease-smooth);
+}
+
+.hand-btn:hover {
+  background: var(--surface-card);
+  color: var(--text-primary);
 }
 
 .hand-btn.active {
-  background: #3b82f6;
+  background: var(--accent-primary);
   color: #ffffff;
 }
 
+/* ==========================================================================
+   Disclaimer Badge Button (header)
+   ========================================================================== */
+
 .practice-disclaimer-badge-btn {
-  background: rgba(245, 158, 11, 0.15);
-  border: 1px solid rgba(245, 158, 11, 0.35);
-  color: #fbbf24;
+  background: var(--color-warning-subtle);
+  border: 1px solid var(--color-warning-border);
+  color: var(--color-warning-text);
   padding: 5px 10px;
-  border-radius: 8px;
+  border-radius: var(--radius-btn);
   cursor: pointer;
-  font-size: 0.78rem;
-  font-weight: 600;
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  transition: all 0.2s ease;
+  transition: background var(--duration-fast) var(--ease-smooth),
+              border-color var(--duration-fast) var(--ease-smooth),
+              transform var(--duration-fast) var(--ease-spring);
 }
 
 .practice-disclaimer-badge-btn:hover {
-  background: rgba(245, 158, 11, 0.25);
-  border-color: rgba(245, 158, 11, 0.55);
-  color: #fef08a;
-  transform: translateY(-1px);
+  transform: var(--hover-lift);
 }
 
+.practice-disclaimer-badge-btn:active {
+  transform: scale(var(--press-scale));
+}
+
+/* ==========================================================================
+   Close Button (both class variants used in JSX)
+   ========================================================================== */
+
+.close-modal-btn,
+.practice-close-btn,
 .modal-close-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-pill);
   background: transparent;
   border: none;
-  color: #94a3b8;
-  font-size: 1.5rem;
-  line-height: 1;
+  color: var(--text-secondary);
   cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 6px;
-  transition: background 0.15s, color 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  transition: background var(--duration-fast) var(--ease-smooth),
+              color var(--duration-fast) var(--ease-smooth),
+              transform var(--duration-fast) var(--ease-spring);
 }
 
+.close-modal-btn:hover,
+.practice-close-btn:hover,
 .modal-close-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: #ffffff;
+  background: var(--surface-card);
+  color: var(--text-primary);
 }
+
+.close-modal-btn:active,
+.practice-close-btn:active,
+.modal-close-btn:active {
+  transform: scale(0.9);
+}
+
+/* ==========================================================================
+   Body - flexible column containing stage grid and results
+   ========================================================================== */
 
 .practice-modal-body {
-  padding: 20px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 20px 24px 24px;
   overflow-y: auto;
+  box-sizing: border-box;
+}
+
+/* Legacy fallback columns */
+.webcam-column,
+.reference-column {
   display: flex;
   flex-direction: column;
-  gap: 20px;
-}
-
-/* Two-column layout for Reference & Camera */
-.practice-stage-grid {
-  display: grid;
-  grid-template-columns: 1fr 1.3fr;
-  gap: 20px;
-}
-
-@media (max-width: 800px) {
-  .practice-stage-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-.practice-panel {
-  background: #11141b;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
   padding: 16px;
-  display: flex;
-  flex-direction: column;
   gap: 12px;
+  overflow-y: auto;
 }
 
-.panel-heading {
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: #cbd5e1;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin: 0;
+.webcam-column {
+  border-right: 1px solid var(--surface-border);
 }
 
-/* Reference video card */
+.column-header {
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wider);
+  margin-bottom: 4px;
+}
+
+/* ==========================================================================
+   Video / Webcam wrappers
+   ========================================================================== */
+
+.webcam-wrapper,
 .reference-video-wrapper {
-  position: relative;
   width: 100%;
   aspect-ratio: 4 / 3;
   background: #000;
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.reference-instructions {
-  font-size: 0.85rem;
-  color: #94a3b8;
-  line-height: 1.45;
-  background: rgba(255, 255, 255, 0.03);
-  padding: 10px 12px;
-  border-radius: 8px;
-}
-
-.reference-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.ref-tag {
-  font-size: 0.75rem;
-  padding: 3px 8px;
-  border-radius: 4px;
-  background: rgba(148, 163, 184, 0.15);
-  color: #cbd5e1;
-}
-
-/* Camera viewport */
-.camera-viewport {
   position: relative;
+  border: 1px solid var(--surface-border);
+}
+
+.webcam-wrapper video,
+.reference-video-wrapper video,
+.reference-video-wrapper iframe {
   width: 100%;
-  aspect-ratio: 4 / 3;
-  background: #000;
-  border-radius: 8px;
-  overflow: hidden;
-  border: 2px solid #334155;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  border: 0;
 }
 
-.camera-viewport.framed-ok {
-  border-color: #22c55e;
-}
-
-.camera-viewport.recording-now {
-  border-color: #ef4444;
-  box-shadow: 0 0 15px rgba(239, 68, 68, 0.35);
-}
-
+/* Legacy selectors kept for backward compat */
 .webcam-video {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transform: scaleX(-1); /* mirror webcam */
+  transform: scaleX(-1);
 }
 
 .webcam-canvas {
@@ -258,9 +284,132 @@
   left: 0;
   width: 100%;
   height: 100%;
-  transform: scaleX(-1); /* mirror canvas overlay to match mirrored video */
+  transform: scaleX(-1);
   pointer-events: none;
 }
+
+/* ==========================================================================
+   Camera viewport state variants
+   ========================================================================== */
+
+.camera-viewport {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  background: #000;
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  border: 2px solid var(--surface-border);
+}
+
+.camera-viewport.framed-ok {
+  border-color: var(--color-success);
+}
+
+.camera-viewport.recording-now {
+  border-color: var(--color-error);
+  box-shadow: 0 0 15px rgba(239, 68, 68, 0.35);
+}
+
+/* ==========================================================================
+   Feedback overlay + similarity meter
+   ========================================================================== */
+
+.feedback-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  padding: 12px;
+  pointer-events: none;
+}
+
+.similarity-meter {
+  width: 100%;
+  background: rgba(11, 15, 23, 0.7);
+  border-radius: var(--radius-btn);
+  padding: 8px 12px;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.similarity-bar-track {
+  flex: 1;
+  height: 6px;
+  background: var(--surface-border);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+
+.similarity-bar-fill {
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--color-error);
+  transition: width 200ms var(--ease-smooth);
+}
+
+.similarity-bar-fill.good {
+  background: var(--color-warning);
+}
+
+.similarity-bar-fill.great {
+  background: var(--color-success);
+}
+
+.similarity-label {
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+  white-space: nowrap;
+  min-width: 36px;
+  text-align: right;
+}
+
+/* ==========================================================================
+   Score breakdown cards
+   ========================================================================== */
+
+.score-breakdown {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  width: 100%;
+}
+
+.score-item {
+  background: var(--surface-card);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-btn);
+  padding: 8px;
+  text-align: center;
+}
+
+.score-item-label {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+
+.score-item-value {
+  font-size: var(--text-lg);
+  font-weight: var(--font-bold);
+  color: var(--text-primary);
+}
+
+.score-item.good .score-item-value {
+  color: var(--color-success-text);
+}
+
+.score-item.poor .score-item-value {
+  color: var(--color-error-text);
+}
+
+/* ==========================================================================
+   Camera overlay / recording indicators (legacy classes)
+   ========================================================================== */
 
 .camera-overlay-banner {
   position: absolute;
@@ -269,25 +418,26 @@
   right: 12px;
   background: rgba(15, 23, 42, 0.85);
   padding: 8px 12px;
-  border-radius: 8px;
-  font-size: 0.82rem;
+  border-radius: var(--radius-btn);
+  font-size: var(--text-xs);
   display: flex;
   align-items: center;
   justify-content: space-between;
   backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
 }
 
 .framing-dot {
   display: inline-block;
   width: 8px;
   height: 8px;
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   margin-right: 6px;
-  background: #f59e0b;
+  background: var(--color-warning);
 }
 
 .framing-dot.ok {
-  background: #22c55e;
+  background: var(--color-success);
 }
 
 .countdown-overlay {
@@ -306,16 +456,16 @@
 
 .countdown-number {
   font-size: 4.5rem;
-  font-weight: 800;
-  color: #38bdf8;
-  text-shadow: 0 4px 16px rgba(56, 189, 248, 0.6);
+  font-weight: var(--font-bold);
+  color: var(--accent-text-hover);
+  text-shadow: 0 4px 16px rgba(99, 102, 241, 0.5);
   animation: pulseScale 0.9s infinite;
 }
 
 @keyframes pulseScale {
-  0% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.15); opacity: 0.8; }
-  100% { transform: scale(1); opacity: 1; }
+  0%   { transform: scale(1);    opacity: 1; }
+  50%  { transform: scale(1.15); opacity: 0.8; }
+  100% { transform: scale(1);    opacity: 1; }
 }
 
 .recording-indicator {
@@ -324,10 +474,10 @@
   left: 12px;
   background: rgba(239, 68, 68, 0.9);
   color: #fff;
-  font-size: 0.75rem;
-  font-weight: 700;
+  font-size: var(--text-xs);
+  font-weight: var(--font-bold);
   padding: 4px 10px;
-  border-radius: 20px;
+  border-radius: var(--radius-pill);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -336,8 +486,47 @@
 
 @keyframes blink {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  50%       { opacity: 0.5; }
 }
+
+/* ==========================================================================
+   Panel / stage grid: Two balanced columns spanning 100% width
+   ========================================================================== */
+
+.practice-stage-grid {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  gap: 24px;
+  align-items: start;
+  box-sizing: border-box;
+}
+
+.practice-panel {
+  background: var(--surface-card);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--surface-border);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-sizing: border-box;
+  box-shadow: var(--shadow-sm);
+}
+
+.panel-heading {
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  color: var(--text-secondary);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 0;
+}
+
+/* ==========================================================================
+   Camera control bar + legacy capture buttons
+   ========================================================================== */
 
 .camera-controls-bar {
   display: flex;
@@ -347,61 +536,160 @@
 }
 
 .btn-primary-capture {
-  background: #2563eb;
-  color: #fff;
+  background: var(--accent-primary);
+  color: var(--accent-foreground);
   border: none;
   padding: 10px 20px;
-  border-radius: 8px;
-  font-size: 0.95rem;
-  font-weight: 600;
+  border-radius: var(--radius-btn);
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  transition: background 0.15s;
+  transition: background var(--duration-fast) var(--ease-smooth),
+              box-shadow var(--duration-fast) var(--ease-smooth),
+              transform var(--duration-fast) var(--ease-spring);
+  box-shadow: var(--shadow-accent);
 }
 
 .btn-primary-capture:hover:not(:disabled) {
-  background: #1d4ed8;
+  background: var(--accent-hover);
+  box-shadow: var(--shadow-accent-hover);
+  transform: var(--hover-lift);
+}
+
+.btn-primary-capture:active:not(:disabled) {
+  background: var(--accent-active);
+  transform: scale(var(--press-scale));
 }
 
 .btn-primary-capture:disabled {
-  background: #334155;
-  color: #64748b;
+  background: var(--surface-card);
+  color: var(--text-disabled);
   cursor: not-allowed;
+  box-shadow: none;
 }
 
 .btn-stop-capture {
-  background: #dc2626;
-  color: #fff;
-  border: none;
+  background: var(--color-error-subtle);
+  color: var(--color-error-text);
+  border: 1px solid var(--color-error-border);
   padding: 10px 20px;
-  border-radius: 8px;
-  font-size: 0.95rem;
-  font-weight: 600;
+  border-radius: var(--radius-btn);
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
   cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-smooth),
+              color var(--duration-fast) var(--ease-smooth),
+              border-color var(--duration-fast) var(--ease-smooth),
+              transform var(--duration-fast) var(--ease-spring);
+}
+
+.btn-stop-capture:hover {
+  background: var(--color-error);
+  color: #ffffff;
+  border-color: transparent;
+}
+
+.btn-stop-capture:active {
+  transform: scale(var(--press-scale));
 }
 
 .btn-secondary {
-  background: rgba(255, 255, 255, 0.08);
-  color: #e2e8f0;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--surface-card);
+  color: var(--text-primary);
+  border: 1px solid var(--surface-border);
   padding: 8px 14px;
-  border-radius: 6px;
-  font-size: 0.85rem;
+  border-radius: var(--radius-btn);
+  font-size: var(--text-sm);
   cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-smooth),
+              border-color var(--duration-fast) var(--ease-smooth);
 }
 
 .btn-secondary:hover {
-  background: rgba(255, 255, 255, 0.15);
+  background: var(--surface-card-hover);
+  border-color: var(--surface-border-hover);
 }
 
-/* Results section */
+/* ==========================================================================
+   Footer
+   ========================================================================== */
+
+.practice-modal-footer {
+  padding: 12px 20px;
+  border-top: 1px solid var(--surface-border);
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-shrink: 0;
+  background: var(--surface-bg-subtle);
+}
+
+.start-practice-btn {
+  background: var(--accent-primary);
+  color: var(--accent-foreground);
+  border: none;
+  border-radius: var(--radius-btn);
+  padding: 10px 20px;
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: var(--shadow-accent);
+  transition: background var(--duration-fast) var(--ease-smooth),
+              box-shadow var(--duration-fast) var(--ease-smooth),
+              transform var(--duration-fast) var(--ease-spring);
+}
+
+.start-practice-btn:hover {
+  background: var(--accent-hover);
+  box-shadow: var(--shadow-accent-hover);
+  transform: var(--hover-lift);
+}
+
+.start-practice-btn:active {
+  background: var(--accent-active);
+  transform: scale(var(--press-scale));
+}
+
+.stop-practice-btn {
+  background: var(--color-error-subtle);
+  color: var(--color-error-text);
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius-btn);
+  padding: 10px 20px;
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-smooth),
+              color var(--duration-fast) var(--ease-smooth),
+              border-color var(--duration-fast) var(--ease-smooth),
+              transform var(--duration-fast) var(--ease-spring);
+}
+
+.stop-practice-btn:hover {
+  background: var(--color-error);
+  color: #ffffff;
+  border-color: transparent;
+}
+
+.stop-practice-btn:active {
+  transform: scale(var(--press-scale));
+}
+
+/* ==========================================================================
+   Results section
+   ========================================================================== */
+
 .practice-results-section {
-  background: #11141b;
-  border-radius: 12px;
+  background: var(--surface-card);
+  border-radius: var(--radius-card);
   padding: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--surface-border);
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -414,7 +702,7 @@
   flex-wrap: wrap;
   gap: 12px;
   padding-bottom: 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid var(--surface-border-subtle);
 }
 
 .rating-summary-box {
@@ -429,33 +717,33 @@
   align-items: center;
   gap: 8px;
   padding: 8px 18px;
-  border-radius: 9999px;
-  font-weight: 700;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  border-radius: var(--radius-pill);
+  font-weight: var(--font-bold);
+  box-shadow: var(--shadow-md);
 }
 
 .rating-pill-badge.rating-great {
-  background: linear-gradient(135deg, rgba(34, 197, 94, 0.25), rgba(16, 185, 129, 0.2));
-  border: 1.5px solid #22c55e;
-  color: #86efac;
+  background: var(--color-success-subtle);
+  border: 1.5px solid var(--color-success-border);
+  color: var(--color-success-text);
 }
 
 .rating-pill-badge.rating-good {
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.25), rgba(14, 165, 233, 0.2));
-  border: 1.5px solid #3b82f6;
-  color: #93c5fd;
+  background: var(--accent-subtle);
+  border: 1.5px solid var(--accent-subtle-border);
+  color: var(--accent-text);
 }
 
 .rating-pill-badge.rating-fair {
-  background: linear-gradient(135deg, rgba(245, 158, 11, 0.25), rgba(217, 119, 6, 0.2));
-  border: 1.5px solid #f59e0b;
-  color: #fde68a;
+  background: var(--color-warning-subtle);
+  border: 1.5px solid var(--color-warning-border);
+  color: var(--color-warning-text);
 }
 
 .rating-pill-badge.rating-needs-practice {
-  background: linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(220, 38, 38, 0.15));
-  border: 1.5px solid #ef4444;
-  color: #fca5a5;
+  background: var(--color-error-subtle);
+  border: 1.5px solid var(--color-error-border);
+  color: var(--color-error-text);
 }
 
 .rating-badge-icon {
@@ -464,58 +752,52 @@
 }
 
 .rating-badge-word {
-  font-weight: 800;
-  font-size: 1.15rem;
-  letter-spacing: 0.01em;
+  font-weight: var(--font-bold);
+  font-size: var(--text-lg);
+  letter-spacing: var(--tracking-normal);
 }
 
 .rating-meta h3 {
-  margin: 0 0 4px 0;
-  font-size: 1.05rem;
-  color: #f1f5f9;
+  margin: 0 0 4px;
+  font-size: var(--text-base);
+  color: var(--text-primary);
 }
 
 .rating-meta p {
   margin: 0;
-  font-size: 0.82rem;
-  color: #94a3b8;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
   max-width: 500px;
   line-height: 1.4;
 }
 
-.rating-accent.rating-great {
-  color: #4ade80;
-  font-weight: 800;
-}
+.rating-accent.rating-great          { color: var(--color-success-text); font-weight: var(--font-bold); }
+.rating-accent.rating-good           { color: var(--accent-text);         font-weight: var(--font-bold); }
+.rating-accent.rating-fair           { color: var(--color-warning-text);  font-weight: var(--font-bold); }
+.rating-accent.rating-needs-practice { color: var(--color-error-text);    font-weight: var(--font-bold); }
 
-.rating-accent.rating-good {
-  color: #60a5fa;
-  font-weight: 800;
-}
-
-.rating-accent.rating-fair {
-  color: #fbbf24;
-  font-weight: 800;
-}
-
-.rating-accent.rating-needs-practice {
-  color: #f87171;
-  font-weight: 800;
-}
+/* ==========================================================================
+   Algorithmic disclaimer pill
+   ========================================================================== */
 
 .algorithmic-disclaimer-pill {
-  background: rgba(245, 158, 11, 0.1);
-  border: 1px dashed rgba(245, 158, 11, 0.4);
-  border-radius: 8px;
+  background: var(--color-warning-subtle);
+  border: 1px dashed var(--color-warning-border);
+  border-radius: var(--radius-btn);
   padding: 10px 14px;
-  color: #fde68a;
-  font-size: 0.82rem;
+  color: var(--color-warning-text);
+  font-size: var(--text-xs);
   line-height: 1.45;
 }
 
 .algorithmic-disclaimer-pill strong {
-  color: #fbbf24;
+  color: var(--color-warning-text);
+  font-weight: var(--font-semibold);
 }
+
+/* ==========================================================================
+   Coaching cards
+   ========================================================================== */
 
 .coaching-cards-grid {
   display: grid;
@@ -523,35 +805,29 @@
   gap: 12px;
 }
 
-@media (max-width: 600px) {
-  .coaching-cards-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
 .coaching-card {
   padding: 12px 14px;
-  border-radius: 8px;
-  font-size: 0.85rem;
+  border-radius: var(--radius-btn);
+  font-size: var(--text-sm);
   line-height: 1.45;
 }
 
 .coaching-card.adjust {
-  background: rgba(245, 158, 11, 0.12);
-  border-left: 4px solid #f59e0b;
-  color: #fde68a;
+  background: var(--color-warning-subtle);
+  border-left: 4px solid var(--color-warning);
+  color: var(--color-warning-text);
 }
 
 .coaching-card.strong {
-  background: rgba(34, 197, 94, 0.12);
-  border-left: 4px solid #22c55e;
-  color: #bbf7d0;
+  background: var(--color-success-subtle);
+  border-left: 4px solid var(--color-success);
+  color: var(--color-success-text);
 }
 
 .coaching-card h4 {
-  margin: 0 0 4px 0;
-  font-size: 0.88rem;
-  font-weight: 700;
+  margin: 0 0 4px;
+  font-size: var(--text-sm);
+  font-weight: var(--font-bold);
 }
 
 .coaching-card ul {
@@ -559,52 +835,49 @@
   padding-left: 18px;
 }
 
+/* ==========================================================================
+   Dimension table
+   ========================================================================== */
+
 .dimension-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.82rem;
+  font-size: var(--text-xs);
 }
 
 .dimension-table th {
   text-align: left;
   padding: 8px;
-  color: #94a3b8;
-  font-weight: 600;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  color: var(--text-secondary);
+  font-weight: var(--font-semibold);
+  border-bottom: 1px solid var(--surface-border-subtle);
 }
 
 .dimension-table td {
   padding: 8px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid var(--surface-border-subtle);
 }
+
+/* ==========================================================================
+   Status tags
+   ========================================================================== */
 
 .status-tag {
   display: inline-block;
   padding: 2px 8px;
-  border-radius: 4px;
-  font-weight: 600;
-  font-size: 0.75rem;
+  border-radius: var(--radius-xs);
+  font-weight: var(--font-semibold);
+  font-size: var(--text-xs);
 }
 
-.status-tag.strong {
-  background: rgba(34, 197, 94, 0.2);
-  color: #4ade80;
-}
+.status-tag.strong     { background: var(--color-success-subtle); color: var(--color-success-text); }
+.status-tag.acceptable { background: var(--accent-subtle);        color: var(--accent-text); }
+.status-tag.adjust     { background: var(--color-warning-subtle); color: var(--color-warning-text); }
+.status-tag.unknown    { background: var(--surface-card);         color: var(--text-muted); }
 
-.status-tag.acceptable {
-  background: rgba(59, 130, 246, 0.2);
-  color: #60a5fa;
-}
-
-.status-tag.adjust {
-  background: rgba(245, 158, 11, 0.2);
-  color: #fbbf24;
-}
-
-.status-tag.unknown {
-  background: rgba(148, 163, 184, 0.2);
-  color: #94a3b8;
-}
+/* ==========================================================================
+   Results actions + privacy notice
+   ========================================================================== */
 
 .practice-results-actions {
   display: flex;
@@ -614,9 +887,134 @@
 }
 
 .privacy-notice {
-  font-size: 0.75rem;
-  color: #64748b;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
   text-align: center;
-  margin: 0;
-  line-height: 1.4;
+  margin: 8px auto 0;
+  line-height: 1.5;
+  padding: 8px 18px;
+  background: var(--surface-bg-subtle);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--surface-border-subtle);
+  max-width: 740px;
+  box-sizing: border-box;
+}
+
+/* ==========================================================================
+   Reference instructions + tags
+   ========================================================================== */
+
+.reference-instructions {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.5;
+  background: var(--surface-bg-subtle);
+  padding: 12px 14px;
+  border-radius: var(--radius-btn);
+  border: 1px solid var(--surface-border-subtle);
+}
+
+.reference-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ref-tag {
+  font-size: var(--text-xs);
+  font-weight: var(--font-medium);
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-bg-subtle);
+  color: var(--accent-text);
+  border: 1px solid var(--accent-subtle-border);
+}
+
+/* ==========================================================================
+   Responsive Breakpoints (< 860px)
+   ========================================================================== */
+
+@media (max-width: 860px) {
+  .practice-modal-container {
+    width: 98%;
+    max-height: 96dvh;
+  }
+
+  .practice-modal-body {
+    padding: 16px;
+    gap: 16px;
+  }
+
+  .practice-stage-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .coaching-cards-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ==========================================================================
+   Prefers-reduced-motion
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .practice-modal-container {
+    animation: none !important;
+  }
+
+  .countdown-number {
+    animation: none !important;
+  }
+
+  .recording-indicator {
+    animation: none !important;
+  }
+
+  .hand-btn,
+  .start-practice-btn,
+  .stop-practice-btn,
+  .btn-primary-capture,
+  .btn-stop-capture,
+  .btn-secondary,
+  .practice-disclaimer-badge-btn,
+  .close-modal-btn,
+  .practice-close-btn,
+  .modal-close-btn {
+    transition: none !important;
+  }
+
+  .similarity-bar-fill {
+    transition: none !important;
+  }
+
+  .start-practice-btn:hover,
+  .btn-primary-capture:hover,
+  .practice-disclaimer-badge-btn:hover {
+    transform: none !important;
+  }
+
+  .start-practice-btn:active,
+  .stop-practice-btn:active,
+  .btn-primary-capture:active,
+  .btn-stop-capture:active,
+  .close-modal-btn:active,
+  .practice-close-btn:active,
+  .modal-close-btn:active,
+  .practice-disclaimer-badge-btn:active {
+    transform: none !important;
+  }
+}
+
+/* ==========================================================================
+   Prefers-reduced-transparency
+   ========================================================================== */
+
+@media (prefers-reduced-transparency: reduce) {
+  .practice-modal-backdrop {
+    background: rgba(11, 15, 23, 0.96) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
 }

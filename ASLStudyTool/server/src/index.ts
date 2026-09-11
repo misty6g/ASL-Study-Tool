@@ -5,19 +5,56 @@ import { createClient } from '@supabase/supabase-js';
 import path from 'path';
 import fs from 'fs';
 import https from 'https';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
+import bcrypt from 'bcryptjs';
 
 // Load environment variables
 dotenv.config();
 
 const app = express();
-//test
+
+const corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:3000';
+
+// Security headers
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  contentSecurityPolicy: false
+}));
+
 // Middleware
 app.use(cors({
-  origin: 'http://localhost:3000', // React app's default port
+  origin: (origin, callback) => {
+    // Allow requests with no origin (curl/mobile/local) or from any localhost/127.0.0.1 port
+    if (!origin || origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1') || origin === corsOrigin) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(express.json());
+
+// API Rate Limiting to prevent scraping and denial of service
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' }
+});
+app.use('/api/', apiLimiter);
+
+// Specific stricter rate limit for video streaming endpoint
+const videoStreamLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Video stream rate limit exceeded, please try again later.' }
+});
 
 // Video cache directory
 const videoCacheDir = path.join(__dirname, '../../Videos/.cache');
@@ -29,15 +66,45 @@ if (!fs.existsSync(videoCacheDir)) {
   }
 }
 
-// Serve video files
-const videosDir = path.join(__dirname, '../../Videos');
-app.use('/videos', express.static(videosDir));
+// SECURITY NOTE: The static mount of the Videos directory (app.use('/videos', express.static(...)))
+// has been deliberately removed to prevent unauthorized access and link harvesting.
+// Video streaming is handled securely and selectively via /api/videos/stream/:fileId.
+
+// Whitelist of approved video file IDs to prevent arbitrary SSRF and cache exhaustion
+const whitelistedFileIds = new Set<string>();
+
+const extractDriveId = (url: string): string | null => {
+  if (!url || typeof url !== 'string') return null;
+  const trimmed = url.trim();
+  // Support both raw Google Drive file IDs and full Drive URLs
+  if (/^[a-zA-Z0-9_-]{25,}$/.test(trimmed)) {
+    return trimmed;
+  }
+  const match = trimmed.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) || trimmed.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  return match ? match[1] : null;
+};
+
+// Formats video URLs to internal proxy paths, shielding raw Google Drive share links
+const formatVideoUrl = (rawUrl: string): string => {
+  if (!rawUrl || typeof rawUrl !== 'string') return '';
+  const fileId = extractDriveId(rawUrl);
+  if (fileId) {
+    whitelistedFileIds.add(fileId);
+    return `/api/videos/stream/${fileId}`;
+  }
+  return rawUrl;
+};
 
 // Stream video from Google Drive with range support, CORS, and disk caching
-app.get('/api/videos/stream/:fileId', (req, res) => {
+app.get('/api/videos/stream/:fileId', videoStreamLimiter, (req, res) => {
   const fileId = req.params.fileId;
   if (!fileId || !/^[a-zA-Z0-9_-]+$/.test(fileId)) {
     return res.status(400).json({ error: 'Invalid file ID format' });
+  }
+
+  // Security check: Only allow streaming of known, cataloged video assets
+  if (whitelistedFileIds.size > 0 && !whitelistedFileIds.has(fileId)) {
+    return res.status(403).json({ error: 'Access denied: video file is not authorized' });
   }
 
   const cachedFilePath = path.join(videoCacheDir, `${fileId}.mp4`);
@@ -51,7 +118,7 @@ app.get('/api/videos/stream/:fileId', (req, res) => {
           headers: {
             'Content-Type': 'video/mp4',
             'Accept-Ranges': 'bytes',
-            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Origin': req.headers.origin || '*',
             'Cache-Control': 'public, max-age=86400'
           }
         });
@@ -63,20 +130,37 @@ app.get('/api/videos/stream/:fileId', (req, res) => {
 
   // Stream directly from Google Drive
   const driveUrl = `https://drive.usercontent.google.com/download?id=${fileId}&export=download`;
-  const requestHeaders: Record<string, string> = {};
+  const requestHeaders: Record<string, string> = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+  };
   if (req.headers.range) {
     requestHeaders['Range'] = req.headers.range;
   }
 
   const handleStreamResponse = (sourceRes: any) => {
-    // Handle redirect (e.g. 301, 302, 303)
+    // Handle redirect (e.g. 301, 302, 303) with strict SSRF defense
     if (sourceRes.statusCode && sourceRes.statusCode >= 300 && sourceRes.statusCode < 400 && sourceRes.headers.location) {
-      https.get(sourceRes.headers.location, { headers: requestHeaders }, (redirectRes) => {
-        handleStreamResponse(redirectRes);
-      }).on('error', (err) => {
-        console.error('Redirect video stream error:', err);
-        if (!res.headersSent) res.status(502).json({ error: 'Video stream redirect failed' });
-      });
+      try {
+        const redirectUrl = new URL(sourceRes.headers.location);
+        // SSRF protection: Ensure redirect target is strictly an official Google Drive domain
+        const allowedHosts = ['.google.com', '.googleusercontent.com'];
+        const isAllowedHost = allowedHosts.some(domain => redirectUrl.hostname.endsWith(domain));
+        if (redirectUrl.protocol !== 'https:' || !isAllowedHost) {
+          console.error(`Blocked unsafe video stream redirect target: ${redirectUrl.hostname}`);
+          if (!res.headersSent) res.status(502).json({ error: 'Invalid video stream redirect target' });
+          return;
+        }
+
+        https.get(sourceRes.headers.location, { headers: requestHeaders }, (redirectRes) => {
+          handleStreamResponse(redirectRes);
+        }).on('error', (err) => {
+          console.error('Redirect video stream error:', err);
+          if (!res.headersSent) res.status(502).json({ error: 'Video stream redirect failed' });
+        });
+      } catch (urlErr) {
+        console.error('Malformed redirect URL:', urlErr);
+        if (!res.headersSent) res.status(502).json({ error: 'Malformed video stream redirect URL' });
+      }
       return;
     }
 
@@ -92,7 +176,7 @@ app.get('/api/videos/stream/:fileId', (req, res) => {
     const resHeaders: Record<string, string | number> = {
       'Content-Type': sourceRes.headers['content-type'] || 'video/mp4',
       'Accept-Ranges': 'bytes',
-      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Origin': req.headers.origin || '*',
       'Cache-Control': 'public, max-age=86400'
     };
     if (sourceRes.headers['content-length']) resHeaders['Content-Length'] = sourceRes.headers['content-length'];
@@ -101,11 +185,15 @@ app.get('/api/videos/stream/:fileId', (req, res) => {
     res.writeHead(statusCode, resHeaders);
     sourceRes.pipe(res);
 
-    // If full stream without range, cache the file to disk in background
+    // If full stream without range, cache the file to disk in background (subject to size limit)
     if (statusCode === 200 && !req.headers.range) {
       try {
-        const fileStream = fs.createWriteStream(cachedFilePath);
-        sourceRes.pipe(fileStream);
+        const contentLength = Number(sourceRes.headers['content-length']) || 0;
+        const MAX_CACHE_SIZE_BYTES = 50 * 1024 * 1024; // 50MB per video cap
+        if (contentLength <= MAX_CACHE_SIZE_BYTES) {
+          const fileStream = fs.createWriteStream(cachedFilePath);
+          sourceRes.pipe(fileStream);
+        }
       } catch (cacheErr) {
         console.warn('Cache write error:', cacheErr);
       }
@@ -187,10 +275,17 @@ const populateLocalStore = () => {
         for (const line of lines) {
           const parts = line.split(',').map(item => item.trim());
           if (parts.length >= 2 && parts[0] && parts[1]) {
+            const rawUrl = parts[0];
+            const answer = parts[1];
+            const fileId = extractDriveId(rawUrl);
+            if (fileId) {
+              whitelistedFileIds.add(fileId);
+            }
             localStore.cards.push({
               id: `card-${cardCounter++}`,
-              video_url: parts[0],
-              answer: parts[1],
+              // Protect raw Google Drive URLs by exposing internal streaming endpoints only
+              video_url: fileId ? `/api/videos/stream/${fileId}` : rawUrl,
+              answer: answer,
               deck_id: deckId
             });
           }
@@ -200,7 +295,7 @@ const populateLocalStore = () => {
       console.warn(`Could not read local vocab file ${vf.filename}:`, err.message);
     }
   }
-  console.log(`Local fallback store initialized: ${localStore.decks.length} decks, ${localStore.cards.length} cards.`);
+  console.log(`Local fallback store initialized: ${localStore.decks.length} decks, ${localStore.cards.length} cards, ${whitelistedFileIds.size} whitelisted video streams.`);
 };
 
 // Function to clear existing data
@@ -217,34 +312,6 @@ const clearExistingData = async () => {
     await supabase.from('decks').delete().neq('id', 0);
     await supabase.from('users').delete().neq('id', 0);
     
-    // Create tables if they don't exist
-    const createStarredCardsTable = async () => {
-      try {
-        // Try creating the table directly with a SQL query
-        const { error: sqlError } = await supabase.rpc('exec_sql', {
-          sql_query: `
-            CREATE TABLE IF NOT EXISTS starred_cards (
-              id SERIAL PRIMARY KEY,
-              user_id TEXT NOT NULL,
-              card_id TEXT NOT NULL,
-              created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-              UNIQUE(user_id, card_id)
-            );
-          `
-        });
-        
-        if (sqlError) {
-          console.error('Error creating starred_cards table via SQL:', sqlError);
-        } else {
-          console.log('Successfully created or verified starred_cards table');
-        }
-      } catch (error) {
-        console.error('Error in createStarredCardsTable:', error);
-      }
-    };
-    
-    await createStarredCardsTable();
-    
     console.log('Existing data cleared.');
   } catch (error: any) {
     console.error('Error clearing existing data:', error.message);
@@ -257,11 +324,12 @@ const createSampleData = async () => {
     // Clear existing data first
     await clearExistingData();
 
-    // Create a sample user
+    // Create a sample user with hashed password
+    const hashedPassword = bcrypt.hashSync('demo123', 10);
     const { data: user, error: userError } = await supabase
       .from('users')
       .insert([
-        { email: 'demo@example.com', password: 'demo123' }
+        { email: 'demo@example.com', password_hash: hashedPassword }
       ])
       .select()
       .single();
@@ -296,8 +364,12 @@ const createSampleData = async () => {
             .filter(line => line.trim()) // Remove empty lines
             .map(line => {
               const [url, answer] = line.split(',').map(item => item.trim());
+              const fileId = extractDriveId(url);
+              if (fileId) {
+                whitelistedFileIds.add(fileId);
+              }
               return {
-                video_url: url,
+                video_url: fileId ? `/api/videos/stream/${fileId}` : url,
                 answer: answer,
                 deck_id: deck.id
               };
@@ -346,17 +418,17 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-// Get all users
+// Get all users (sanitized, omitting passwords)
 app.get('/api/users', async (req, res) => {
   try {
-    const { data, error } = await supabase.from('users').select('*');
+    const { data, error } = await supabase.from('users').select('id, email, created_at');
     if (!error && data && data.length > 0) {
       return res.json(data);
     }
   } catch (error: any) {
     // Supabase unavailable, fallback to local store
   }
-  res.json(localStore.users);
+  res.json(localStore.users.map(u => ({ id: u.id, email: u.email })));
 });
 
 // Get all decks for a user
@@ -385,7 +457,10 @@ app.get('/api/cards/:deckId', async (req, res) => {
       .eq('deck_id', req.params.deckId);
 
     if (!error && data && data.length > 0) {
-      return res.json(data);
+      return res.json(data.map((card: any) => ({
+        ...card,
+        video_url: formatVideoUrl(card.video_url)
+      })));
     }
   } catch (error: any) {
     // Supabase unavailable, fallback to local store
@@ -432,7 +507,7 @@ app.get('/api/search', async (req, res) => {
         const cardResults = (matchingCards || []).map((card: any) => ({
           id: card.id,
           answer: card.answer,
-          video_url: card.video_url,
+          video_url: formatVideoUrl(card.video_url),
           deck_id: card.deck_id,
           deck: decksMap[card.deck_id] || { id: card.deck_id, title: 'Unknown Deck' },
           type: 'card'
@@ -688,12 +763,16 @@ const startServer = async () => {
     // 1. Populate resilient local in-memory database store
     populateLocalStore();
 
-    // 2. Attempt Supabase sync if remote host is reachable
+    // 2. Attempt Supabase sync if remote host is reachable (only wipe if explicit reset flag is set)
     try {
-      console.log('Attempting Supabase sync...');
-      await clearExistingData();
-      await createSampleData();
-      console.log('Supabase sync completed.');
+      if (process.env.RESET_DB_ON_STARTUP === 'true') {
+        console.log('RESET_DB_ON_STARTUP is true: Clearing and reseeding database...');
+        await clearExistingData();
+        await createSampleData();
+        console.log('Database reseeded successfully.');
+      } else {
+        console.log('Database reset on startup disabled to prevent data loss (set RESET_DB_ON_STARTUP=true to reseed).');
+      }
     } catch (dbErr: any) {
       console.log('Supabase offline or unreachable. Running with resilient local in-memory store.');
     }

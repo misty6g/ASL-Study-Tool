@@ -1,12 +1,11 @@
-import React, { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import './Home.css';
 
-// Define the constant here since the import is not working
 const LOCAL_STORAGE_STARRED_KEY = 'asl_study_tool_starred_cards';
 
-// Removing the conflicting inline styles entirely - using only the CSS file styles
+type CategoryFilter = 'all' | 'decks' | 'practice' | 'starred';
 
 interface User {
   id: string;
@@ -37,115 +36,130 @@ const Home: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [searchResults, setSearchResults] = useState<{ cards: SearchResult[], decks: Deck[] }>({
+  const [activeCategory, setActiveCategory] = useState<CategoryFilter>('all');
+  const [searchResults, setSearchResults] = useState<{ cards: SearchResult[]; decks: Deck[] }>({
     cards: [],
     decks: []
   });
   const [isSearching, setIsSearching] = useState(false);
   const [starredCards, setStarredCards] = useState<SearchResult[]>([]);
   const [loadingStarred, setLoadingStarred] = useState(true);
-  
-  const navigate = useNavigate();
 
-  // Fetch starred cards
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // Helper to read starred cards from localStorage safely
+  const readStarredFromLocalStorage = useCallback((): SearchResult[] => {
+    const localStarredStr = localStorage.getItem(LOCAL_STORAGE_STARRED_KEY);
+    if (!localStarredStr) return [];
+    try {
+      const localStarredIds = JSON.parse(localStarredStr);
+      if (Array.isArray(localStarredIds) && localStarredIds.length > 0) {
+        return localStarredIds.map((id: string) => ({
+          id: String(id),
+          answer: 'Starred Card',
+          video_url: '',
+          deck_id: 'unknown',
+          deck: { id: 'unknown', title: 'Unknown Deck' },
+          type: 'card'
+        }));
+      }
+      return [];
+    } catch (e) {
+      return [];
+    }
+  }, []);
+
+  // Synchronize starred cards across API, localStorage, and events
+  const syncStarredCards = useCallback(async () => {
+    const demoUserId = 'demo-user-id';
+    try {
+      const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/users/${demoUserId}/starred-cards`);
+      if (response.data && Array.isArray(response.data.cards) && response.data.cards.length > 0) {
+        setStarredCards(response.data.cards);
+        return;
+      }
+    } catch (serverErr) {
+      // Fallback to localStorage on server error
+    }
+
+    const localCards = readStarredFromLocalStorage();
+    setStarredCards(localCards);
+  }, [readStarredFromLocalStorage]);
+
+  // Initial starred cards load and cross-tab storage / focus listeners
   useEffect(() => {
-    const fetchStarredCards = async () => {
-      try {
-        // In a real app, you'd get the actual user ID from auth
-        const demoUserId = "demo-user-id"; // Hardcoded for demo
-        
-        // Try server first
-        try {
-          const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/users/${demoUserId}/starred-cards`);
-          if (response.data && response.data.cards && response.data.cards.length > 0) {
-            console.log(`Loaded ${response.data.cards.length} starred cards from server`);
-            setStarredCards(response.data.cards);
-          } else {
-            // If server returns no data, try localStorage
-            console.log('No starred cards from server, checking localStorage');
-            const localStarredStr = localStorage.getItem(LOCAL_STORAGE_STARRED_KEY);
-            if (localStarredStr) {
-              try {
-                const localStarredIds = JSON.parse(localStarredStr);
-                console.log(`Found ${localStarredIds.length} starred card IDs in localStorage`);
-                
-                // We need to convert IDs to card objects, so fetch all cards from all decks
-                if (localStarredIds.length > 0) {
-                  // Create placeholder cards with just IDs for now (better than nothing)
-                  const placeholderStarredCards = localStarredIds.map((id: string) => ({
-                    id,
-                    answer: "Starred Card",
-                    video_url: "",
-                    deck_id: "unknown",
-                    deck: { id: "unknown", title: "Unknown Deck" },
-                    type: "card"
-                  }));
-                  setStarredCards(placeholderStarredCards);
-                  console.log(`Created ${placeholderStarredCards.length} placeholder cards for starred IDs`);
-                }
-              } catch (e) {
-                console.error('Error parsing localStorage starred cards:', e);
-                setStarredCards([]);
-              }
-            } else {
-              console.log('No starred cards in localStorage either');
-              setStarredCards([]);
-            }
-          }
-        } catch (serverErr) {
-          console.error('Error fetching starred cards from server:', serverErr);
-          
-          // If server fails, try localStorage
-          const localStarredStr = localStorage.getItem(LOCAL_STORAGE_STARRED_KEY);
-          if (localStarredStr) {
-            try {
-              const localStarredIds = JSON.parse(localStarredStr);
-              console.log(`Found ${localStarredIds.length} starred card IDs in localStorage`);
-              
-              // Create placeholder cards from IDs
-              if (localStarredIds.length > 0) {
-                const placeholderStarredCards = localStarredIds.map((id: string) => ({
-                  id,
-                  answer: "Starred Card",
-                  video_url: "",
-                  deck_id: "unknown",
-                  deck: { id: "unknown", title: "Unknown Deck" },
-                  type: "card"
-                }));
-                setStarredCards(placeholderStarredCards);
-              }
-            } catch (e) {
-              console.error('Error parsing localStorage starred cards:', e);
-              setStarredCards([]);
-            }
-          } else {
-            setStarredCards([]);
-          }
-        }
-      } catch (err) {
-        console.error('Error in starred cards logic:', err);
-        setStarredCards([]);
-      } finally {
+    let isMounted = true;
+
+    const initStarred = async () => {
+      await syncStarredCards();
+      if (isMounted) {
         setLoadingStarred(false);
       }
     };
+    initStarred();
 
-    fetchStarredCards();
-  }, []);
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === LOCAL_STORAGE_STARRED_KEY) {
+        syncStarredCards();
+      }
+    };
 
+    const handleFocus = () => {
+      const localCards = readStarredFromLocalStorage();
+      setStarredCards(prev => {
+        if (prev.length !== localCards.length) {
+          return localCards;
+        }
+        return prev;
+      });
+    };
+
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [syncStarredCards, readStarredFromLocalStorage]);
+
+  // Sync initial query and category from URL on mount
+  useEffect(() => {
+    const queryParams = new URLSearchParams(location.search);
+    const qParam = queryParams.get('q');
+    const catParam = queryParams.get('category') as CategoryFilter | null;
+
+    if (qParam) {
+      setSearchTerm(qParam);
+    }
+    if (catParam && ['all', 'decks', 'practice', 'starred'].includes(catParam)) {
+      setActiveCategory(catParam);
+    }
+  }, [location.search]);
+
+  // Safe URL update helper using replaceState
+  const updateUrlParams = (newTerm: string, newCat: CategoryFilter) => {
+    const params = new URLSearchParams();
+    if (newTerm.trim()) params.set('q', newTerm.trim());
+    if (newCat !== 'all') params.set('category', newCat);
+    const searchStr = params.toString() ? `?${params.toString()}` : '';
+    if (typeof window !== 'undefined' && window.history?.replaceState) {
+      window.history.replaceState(null, '', `${window.location.pathname}${searchStr}`);
+    }
+  };
+
+  // Fetch decks for user
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
       setError(null);
-      
+
       try {
-        console.log('Starting data fetch...');
-        // First, get the demo user
         let demoUserId = 'demo-user-id';
         try {
           const usersResponse = await axios.get(`${process.env.REACT_APP_API_URL}/api/users`);
-          console.log('Users API response:', usersResponse.data);
-          
           if (Array.isArray(usersResponse.data) && usersResponse.data.length > 0) {
             const found = usersResponse.data.find((user: User) => user.email === 'demo@example.com');
             if (found) {
@@ -155,26 +169,17 @@ const Home: React.FC = () => {
             }
           }
         } catch (uErr) {
-          console.warn('Using default demo user id');
+          // Use default demo user id
         }
 
-        // Then fetch decks for that user
-        console.log('Fetching decks for user:', demoUserId);
         const decksResponse = await axios.get(`${process.env.REACT_APP_API_URL}/api/decks/${demoUserId}`);
-        
-        console.log('Decks API response:', decksResponse.data);
-        
         if (!decksResponse.data) {
           throw new Error('No decks data received');
         }
-        
-        const fetchedDecks = decksResponse.data;
-        setDecks(fetchedDecks);
-        console.log(`Fetched ${fetchedDecks.length} decks`);
-        
+
+        setDecks(decksResponse.data);
         setLoading(false);
       } catch (err: any) {
-        console.error('Error fetching data:', err);
         setError(err.message || 'Failed to load decks');
         setLoading(false);
       }
@@ -183,47 +188,36 @@ const Home: React.FC = () => {
     fetchData();
   }, []);
 
+  // Server-side search submission
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Search triggered with term:', searchTerm);
-    
+
     if (!searchTerm.trim()) {
-      console.log('Empty search term, clearing results');
       setSearchResults({ cards: [], decks: [] });
       return;
     }
-    
+
     setIsSearching(true);
-    
+
     try {
-      // Use the server-side search API
       const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/search`, {
         params: { term: searchTerm.trim() }
       });
-      
-      console.log('Search API response:', response.data);
-      
-      // Handle the case when API returns an array instead of {cards, decks} object
+
       if (Array.isArray(response.data)) {
-        // If the response is an array, assume it's an array of cards
-        setSearchResults({ 
-          cards: response.data, 
-          decks: [] 
+        setSearchResults({
+          cards: response.data,
+          decks: []
         });
       } else if (response.data && typeof response.data === 'object') {
-        // Ensure cards and decks properties exist
-        const formattedResults = {
+        setSearchResults({
           cards: Array.isArray(response.data.cards) ? response.data.cards : [],
           decks: Array.isArray(response.data.decks) ? response.data.decks : []
-        };
-        setSearchResults(formattedResults);
+        });
       } else {
-        // Fallback if response has unexpected format
         setSearchResults({ cards: [], decks: [] });
       }
     } catch (err: any) {
-      console.error('Error searching:', err);
-      // Show an empty result set on error
       setSearchResults({ cards: [], decks: [] });
     } finally {
       setIsSearching(false);
@@ -231,9 +225,9 @@ const Home: React.FC = () => {
   };
 
   const handleCardResultClick = (deckId: string, cardId: string) => {
-    navigate(`/deck/${deckId}`, { state: { fromSearch: true, highlightCardId: cardId }});
+    navigate(`/deck/${deckId}`, { state: { fromSearch: true, highlightCardId: cardId } });
   };
-  
+
   const handleDeckResultClick = (deckId: string) => {
     navigate(`/deck/${deckId}`);
   };
@@ -241,35 +235,48 @@ const Home: React.FC = () => {
   const clearSearch = () => {
     setSearchTerm('');
     setSearchResults({ cards: [], decks: [] });
+    updateUrlParams('', activeCategory);
+  };
+
+  const handleCategoryClick = (category: CategoryFilter) => {
+    setActiveCategory(category);
+    updateUrlParams(searchTerm, category);
   };
 
   const hasStarredCards = starredCards.length > 0;
-  console.log('Has starred cards:', hasStarredCards, 'Count:', starredCards.length);
 
-  // Handler for when a starred card is clicked
-  const handleStarredCardClick = (cardId: string, deckId: string) => {
-    navigate(`/deck/${deckId}`, { state: { fromSearch: true, highlightCardId: cardId }});
-  };
+  // Real-time client-side filtered decks based on search term and category
+  const displayedDecks = useMemo(() => {
+    if (activeCategory === 'practice' || activeCategory === 'starred') {
+      return [];
+    }
+    const term = searchTerm.toLowerCase().trim();
+    if (!term) return decks;
+    return decks.filter(deck => deck.title.toLowerCase().includes(term));
+  }, [decks, searchTerm, activeCategory]);
 
-  // Create a virtual starred deck
+  // Visibility flags for feature cards in the grid
+  const showFingerspellingCard =
+    (activeCategory === 'all' || activeCategory === 'practice') &&
+    (!searchTerm.trim() ||
+      'fingerspelling'.includes(searchTerm.toLowerCase().trim()) ||
+      'practice'.includes(searchTerm.toLowerCase().trim()) ||
+      'asl.ms'.includes(searchTerm.toLowerCase().trim()));
+
+  const showStarredCard =
+    hasStarredCards &&
+    (activeCategory === 'all' || activeCategory === 'starred') &&
+    (!searchTerm.trim() || 'starred cards'.includes(searchTerm.toLowerCase().trim()));
+
+  // Navigate to virtual starred deck view
   const viewStarredCards = () => {
     if (starredCards.length > 0) {
-      // Instead of using a test view, send to the deck component with a special flag
-      console.log("Viewing all starred cards in deck view");
-      navigate(`/deck/all-starred`, { 
-        state: { 
+      navigate('/deck/all-starred', {
+        state: {
           allStarred: true,
           starredCardIds: localStorage.getItem(LOCAL_STORAGE_STARRED_KEY)
         }
       });
-    }
-  };
-  
-  // Test all starred cards across all decks
-  const testAllStarredCards = () => {
-    if (starredCards.length > 0) {
-      // Navigate to test mode with a special flag indicating we want to test all starred cards
-      navigate(`/test/all-decks`, { state: { starredOnly: true, allDecks: true }});
     }
   };
 
@@ -294,68 +301,144 @@ const Home: React.FC = () => {
     );
   }
 
-  const hasSearchResults = 
-    (searchResults?.cards?.length > 0) || 
-    (searchResults?.decks?.length > 0);
+  const hasSearchResults =
+    searchResults?.cards?.length > 0 || searchResults?.decks?.length > 0;
 
   return (
     <div className="home-container">
-      <h1 className="home-title">ASL Study Decks</h1>
-      
-      {/* Debug section - hidden in production */}
-      {false && (
-        <div style={{ 
-          background: '#333', 
-          padding: '10px', 
-          borderRadius: '5px', 
-          margin: '0 0 20px 0',
-          fontSize: '12px'
-        }}>
-          <p>Starred Cards: {starredCards.length}</p>
-          <p>hasStarredCards: {hasStarredCards ? 'true' : 'false'}</p>
-          <p>Loading: {loading ? 'true' : 'false'}, Loading Starred: {loadingStarred ? 'true' : 'false'}</p>
-          <button onClick={() => {
-            // Check localStorage
-            const local = localStorage.getItem(LOCAL_STORAGE_STARRED_KEY);
-            console.log('localStorage starred cards:', local);
-            alert('localStorage starred cards: ' + (local || 'none'));
-          }}>Check Local Storage</button>
+      {/* Feature 11: Calibrated Home Hero Banner */}
+      <header className="home-hero">
+        <div className="home-hero-eyebrow">
+          <span className="hero-eyebrow-dot" aria-hidden="true"></span>
+          INTERACTIVE ASL PLATFORM
         </div>
-      )}
-      
-      <div className="search-container">
-        <form onSubmit={handleSearch} className="search-form">
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => {
-              setSearchTerm(e.target.value);
-              if (!e.target.value.trim()) {
-                setSearchResults({ cards: [], decks: [] });
-              }
+        <h1 className="home-title home-hero-title">ASL Study Decks</h1>
+        <p className="home-hero-subtext">
+          Master American Sign Language vocabulary with video flashcards, real-time testing, and interactive letter drills.
+        </p>
+        <div className="home-hero-actions">
+          <a
+            href="#deck-grid-section"
+            className="tactile-btn tactile-btn-primary"
+            onClick={(e) => {
+              e.preventDefault();
+              document.getElementById('deck-grid-section')?.scrollIntoView({ behavior: 'smooth' });
             }}
-            placeholder="Search for signs or decks..."
-            className="search-input"
-          />
-          <button type="submit" className="search-button">
+          >
+            Explore Decks
+          </a>
+          <Link
+            to="/fingerspelling"
+            className="tactile-btn tactile-btn-secondary"
+            aria-label="Fingerspelling Trainer"
+          >
+            <span>Finger</span><span>spelling</span> Trainer
+          </Link>
+          <Link
+            to="/"
+            className="tactile-btn tactile-btn-secondary"
+            aria-label="Welcome Hub"
+          >
+            <span>Interactive Sign Hub</span>
+          </Link>
+        </div>
+      </header>
+
+      {/* Feature 12: Real-Time Search & Category Filters */}
+      <section className="search-container" aria-label="Search and filter study decks">
+        <form onSubmit={handleSearch} className="search-form" role="search">
+          <div className="search-input-wrapper">
+            <span className="search-icon" aria-hidden="true">🔍</span>
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => {
+                const val = e.target.value;
+                setSearchTerm(val);
+                updateUrlParams(val, activeCategory);
+                if (!val.trim()) {
+                  setSearchResults({ cards: [], decks: [] });
+                }
+              }}
+              placeholder="Search for signs or decks..."
+              className="search-input"
+              aria-label="Search for signs or decks"
+            />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => {
+                  clearSearch();
+                }}
+                className="search-clear-inline-btn"
+                aria-label="Clear"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+          <button type="submit" className="search-button tactile-btn tactile-btn-primary">
             Search
           </button>
         </form>
-        
+
+        {/* Category Filter Pills */}
+        <div className="category-filters" role="tablist" aria-label="Filter decks by category">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeCategory === 'all'}
+            className={`category-pill ${activeCategory === 'all' ? 'active' : ''}`}
+            onClick={() => handleCategoryClick('all')}
+          >
+            All Items
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeCategory === 'decks'}
+            className={`category-pill ${activeCategory === 'decks' ? 'active' : ''}`}
+            onClick={() => handleCategoryClick('decks')}
+          >
+            Study Decks ({decks.length})
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-label="Fingerspelling"
+            aria-selected={activeCategory === 'practice'}
+            className={`category-pill ${activeCategory === 'practice' ? 'active' : ''}`}
+            onClick={() => handleCategoryClick('practice')}
+          >
+            <span>Finger</span><span>spelling</span>
+          </button>
+          {hasStarredCards && (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeCategory === 'starred'}
+              className={`category-pill category-pill-starred ${activeCategory === 'starred' ? 'active' : ''}`}
+              onClick={() => handleCategoryClick('starred')}
+            >
+              ★ Starred ({starredCards.length})
+            </button>
+          )}
+        </div>
+
         {isSearching && (
-          <div className="search-loading">
-            <div className="loading-spinner-small"></div>
+          <div className="search-loading" role="status">
+            <div className="loading-spinner-small" aria-hidden="true"></div>
             <p>Searching...</p>
           </div>
         )}
-        
+
         {hasSearchResults && (
           <div className="search-results-container">
             <div className="search-results-header">
               <h3>Search Results</h3>
               <button onClick={clearSearch} className="clear-search-btn">Clear</button>
             </div>
-            
+
             {searchResults.decks.length > 0 && (
               <div className="search-section">
                 <h4 className="search-section-title">Decks</h4>
@@ -369,7 +452,7 @@ const Home: React.FC = () => {
                 </ul>
               </div>
             )}
-            
+
             {searchResults.cards.length > 0 && (
               <div className="search-section">
                 <h4 className="search-section-title">Signs</h4>
@@ -385,47 +468,85 @@ const Home: React.FC = () => {
             )}
           </div>
         )}
-        
+
         {!hasSearchResults && searchTerm.trim() && !isSearching && (
           <div className="no-results">
             <p>No results found matching "{searchTerm}"</p>
           </div>
         )}
-      </div>
-      
-      <div className="deck-grid">
-        {/* Fingerspelling Practice (asl.ms) Feature Card */}
-        <Link to="/fingerspelling" className="deck-link fingerspelling-deck-link">
-          <div className="deck-card fingerspelling-deck">
-            <div className="fingerspelling-deck-content">
-              <h2>🤟 Fingerspelling</h2>
-              <span className="fingerspelling-deck-badge">asl.ms Practice</span>
-            </div>
-          </div>
-        </Link>
+      </section>
 
-        {/* Starred Cards "Deck" - only show if there are starred cards */}
-        {hasStarredCards && (
-          <div className="deck-link starred-deck-link">
-            <div className="deck-card starred-deck" onClick={viewStarredCards}>
-              <h2>Starred Cards ({starredCards.length})</h2>
-            </div>
-          </div>
-        )}
-        
-        {/* Regular decks */}
-        {decks.map(deck => (
-          <Link 
-            key={deck.id}
-            to={`/deck/${deck.id}`}
-            className="deck-link"
+      {/* Feature 15: Responsive Deck Grid */}
+      <main id="deck-grid-section" className="deck-grid" aria-label="Available ASL Study Decks">
+        {/* Feature 14: Fingerspelling Quick-Launch Card */}
+        {showFingerspellingCard && (
+          <Link
+            to="/fingerspelling"
+            className="deck-link fingerspelling-deck-link"
+            aria-label="Fingerspelling, asl.ms Practice"
           >
-            <div className="deck-card">
-              <h2>{deck.title}</h2>
+            <div className="deck-card fingerspelling-deck tactile-card">
+              <div className="fingerspelling-deck-content">
+                <div className="deck-card-top-row">
+                  <span className="deck-card-glyph fingerspelling-glyph" aria-hidden="true">🤟</span>
+                  <span className="fingerspelling-deck-badge">asl.ms Practice</span>
+                </div>
+                <h2>🤟 Fingerspelling</h2>
+                <p className="deck-card-subtext">Interactive speed trainer with Lifeprint vocabulary</p>
+              </div>
             </div>
           </Link>
-        ))}
-      </div>
+        )}
+
+        {/* Feature 13: Starred Cards Quick Access Card */}
+        {showStarredCard && (
+          <Link
+            to="/deck/all-starred"
+            state={{
+              allStarred: true,
+              starredCardIds: localStorage.getItem(LOCAL_STORAGE_STARRED_KEY)
+            }}
+            className="deck-link starred-deck-link"
+            aria-label={`Starred Cards (${starredCards.length})`}
+          >
+            <div
+              className="deck-card starred-deck tactile-card"
+              onClick={viewStarredCards}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  viewStarredCards();
+                }
+              }}
+            >
+              <div className="starred-deck-content">
+                <div className="deck-card-top-row">
+                  <span className="deck-card-glyph star-glyph" aria-hidden="true">★</span>
+                  <span className="starred-deck-badge">★ Practice Review</span>
+                </div>
+                <h2>Starred Cards ({starredCards.length})</h2>
+                <p className="deck-card-subtext">Personal focus collection across all decks</p>
+              </div>
+            </div>
+          </Link>
+        )}
+
+        {/* Standard Decks */}
+        {(activeCategory === 'all' || activeCategory === 'decks') &&
+          displayedDecks.map(deck => (
+            <Link key={deck.id} to={`/deck/${deck.id}`} className="deck-link">
+              <div className="deck-card standard-deck tactile-card">
+                <div className="deck-card-header">
+                  <h2>{deck.title}</h2>
+                  <span className="deck-card-badge">Study Deck</span>
+                </div>
+                <p className="deck-card-subtext">Interactive video flashcards & testing</p>
+              </div>
+            </Link>
+          ))}
+      </main>
     </div>
   );
 };

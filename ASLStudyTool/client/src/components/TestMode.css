@@ -1,207 +1,394 @@
-.test-container {
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-  background-color: #2c2c2c;
-  color: white;
-  padding: 20px;
+/**
+ * TestMode.css
+ * Card-by-card quiz flow: video player, answer input, feedback, results summary.
+ * Tokens: var(--*) from styles/tokens.css
+ * Rules: zero !important (except prefers-reduced-motion), zero 100vw, zero em-dashes.
+ * WCAG AA on all text. Mobile-first. Tactile press states.
+ */
+
+/* ==========================================================================
+   1. Keyframes
+   ========================================================================== */
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
+/* ==========================================================================
+   2. Top-Level Container
+   ========================================================================== */
+
+.test-container {
+  min-height: 100dvh;
+  background: var(--surface-bg);
+  color: var(--text-primary);
+  display: flex;
+  flex-direction: column;
+  padding-top: var(--nav-height);
+  font-family: var(--font-sans);
+}
+
+/* Loading and error states center their content */
 .test-container.loading,
 .test-container.error {
   justify-content: center;
   align-items: center;
   text-align: center;
+  gap: 16px;
 }
+
+/* ==========================================================================
+   3. Loading Spinner
+   ========================================================================== */
 
 .loading-spinner {
-  display: inline-block;
-  width: 50px;
-  height: 50px;
-  border: 5px solid rgba(255, 255, 255, 0.3);
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
-  border-top-color: white;
-  animation: spin 1s ease-in-out infinite;
-  margin-bottom: 20px;
+  border: 3px solid var(--surface-border);
+  border-top-color: var(--accent-primary);
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
+/* ==========================================================================
+   4. Header Strip
+   ========================================================================== */
 
 .test-header {
+  padding: 16px 20px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 30px;
-  padding-bottom: 15px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  border-bottom: 1px solid var(--surface-border);
+  max-width: var(--container-max);
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .test-header h1 {
   margin: 0;
-  font-size: 24px;
+  font-size: var(--text-xl);
+  font-weight: var(--font-bold);
+  color: var(--text-primary);
 }
 
+/* ==========================================================================
+   5. Progress Pill (both class names for backward compatibility)
+   ========================================================================== */
+
+.progress-pill,
 .progress {
-  font-size: 16px;
-  background-color: rgba(255, 255, 255, 0.1);
-  padding: 5px 15px;
-  border-radius: 20px;
+  background: var(--accent-subtle);
+  color: var(--accent-text);
+  border: 1px solid var(--accent-subtle-border);
+  border-radius: var(--radius-pill);
+  padding: 4px 12px;
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  white-space: nowrap;
 }
 
-.back-to-deck-btn {
-  background-color: transparent;
-  color: white;
-  border: none;
-  padding: 8px 15px;
+/* ==========================================================================
+   6. Navigation Buttons (back-to-deck, back alias, cancel)
+   ========================================================================== */
+
+.back-to-deck-btn,
+.back-btn,
+.cancel-btn {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-btn);
+  padding: 8px 14px;
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  font-family: var(--font-sans);
   cursor: pointer;
-  font-size: 16px;
   display: flex;
   align-items: center;
-  transition: transform 0.2s;
+  gap: 6px;
+  transition:
+    color var(--duration-fast) var(--ease-smooth),
+    border-color var(--duration-fast) var(--ease-smooth),
+    transform var(--duration-fast) var(--ease-smooth);
 }
 
-.back-to-deck-btn:hover {
-  transform: translateX(-5px);
+.back-to-deck-btn:hover,
+.back-btn:hover,
+.cancel-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--surface-border-hover);
+  transform: translateX(-2px);
 }
+
+.back-to-deck-btn:active,
+.back-btn:active,
+.cancel-btn:active {
+  transform: scale(0.98);
+}
+
+.back-to-deck-btn:focus-visible,
+.back-btn:focus-visible,
+.cancel-btn:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+/* ==========================================================================
+   7. Main Content Area
+   ========================================================================== */
 
 .test-content {
   flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
-  max-width: 800px;
+  max-width: 760px;
   margin: 0 auto;
   width: 100%;
+  padding: 24px 20px;
+  box-sizing: border-box;
+  gap: 24px;
 }
+
+/* ==========================================================================
+   8. Video Player
+   ========================================================================== */
 
 .video-container {
   width: 100%;
   aspect-ratio: 16 / 9;
-  background-color: black;
-  border-radius: 10px;
+  background: #000;
+  border-radius: var(--radius-card);
   overflow: hidden;
-  margin-bottom: 30px;
+  box-shadow: var(--shadow-card);
+  border: 1px solid var(--surface-border);
 }
 
-.video-container video {
+.video-container video,
+.video-container iframe {
   width: 100%;
   height: 100%;
   object-fit: contain;
   display: block;
+  border: 0;
 }
+
+/* ==========================================================================
+   9. Answer Form
+   ========================================================================== */
 
 .answer-form {
   width: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
+  gap: 16px;
 }
 
 .input-group {
   width: 100%;
-  margin-bottom: 20px;
 }
 
 .input-group label {
   display: block;
-  margin-bottom: 10px;
-  font-size: 18px;
+  margin-bottom: 8px;
+  font-size: var(--text-base);
+  font-weight: var(--font-medium);
+  color: var(--text-secondary);
 }
 
 .input-group input {
   width: 100%;
-  padding: 15px;
-  font-size: 18px;
-  background-color: rgba(255, 255, 255, 0.1);
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-radius: 8px;
-  color: white;
-  transition: border-color 0.3s;
+  padding: 14px 16px;
+  font-size: var(--text-lg);
+  font-family: var(--font-sans);
+  background: var(--surface-input);
+  border: 2px solid var(--surface-border);
+  border-radius: var(--radius-btn);
+  color: var(--text-primary);
+  transition: border-color var(--duration-fast) var(--ease-smooth),
+              background var(--duration-fast) var(--ease-smooth);
+  box-sizing: border-box;
 }
 
 .input-group input:focus {
   outline: none;
-  border-color: #64b5f6;
+  border-color: var(--accent-primary);
+  background: var(--surface-input-focus);
 }
 
-.submit-btn,
-.next-btn,
-.start-over-btn {
-  padding: 12px 30px;
-  font-size: 18px;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: transform 0.2s, background-color 0.2s;
+.input-group input::placeholder {
+  color: var(--text-muted);
 }
+
+/* ==========================================================================
+   10. Submit Button
+   ========================================================================== */
 
 .submit-btn {
-  background-color: #64b5f6;
-  color: white;
+  padding: 14px 32px;
+  font-size: var(--text-base);
+  font-weight: var(--font-semibold);
+  font-family: var(--font-sans);
+  border: none;
+  border-radius: var(--radius-btn);
+  cursor: pointer;
+  background: var(--accent-primary);
+  color: #ffffff;
+  box-shadow: var(--shadow-accent);
+  transition:
+    background var(--duration-fast) var(--ease-spring),
+    box-shadow var(--duration-fast) var(--ease-spring),
+    transform var(--duration-fast) var(--ease-spring);
 }
 
 .submit-btn:hover {
-  background-color: #4a9fe0;
-  transform: scale(1.05);
+  background: var(--accent-hover);
+  box-shadow: var(--shadow-accent-hover);
+  transform: translateY(-1px);
 }
 
+.submit-btn:active {
+  transform: scale(0.98);
+  background: var(--accent-active);
+}
+
+.submit-btn:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+/* ==========================================================================
+   11. Next Button
+   ========================================================================== */
+
 .next-btn {
-  background-color: #4caf50;
-  color: white;
+  padding: 14px 32px;
+  font-size: var(--text-base);
+  font-weight: var(--font-semibold);
+  font-family: var(--font-sans);
+  border: none;
+  border-radius: var(--radius-btn);
+  cursor: pointer;
+  background: var(--color-success);
+  color: var(--color-success-foreground);
+  box-shadow: var(--shadow-sm);
+  transition:
+    background var(--duration-fast) var(--ease-spring),
+    transform var(--duration-fast) var(--ease-spring);
 }
 
 .next-btn:hover {
-  background-color: #3d8b40;
-  transform: scale(1.05);
+  background: var(--color-success-hover);
+  transform: translateY(-1px);
 }
 
+.next-btn:active {
+  transform: scale(0.98);
+}
+
+.next-btn:focus-visible {
+  outline: 2px solid var(--color-success);
+  outline-offset: 2px;
+}
+
+/* ==========================================================================
+   12. Start Over Button
+   ========================================================================== */
+
 .start-over-btn {
-  background-color: #ff9800;
-  color: white;
-  margin-right: 15px;
+  padding: 14px 32px;
+  font-size: var(--text-base);
+  font-weight: var(--font-semibold);
+  font-family: var(--font-sans);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-btn);
+  cursor: pointer;
+  background: var(--surface-card);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+  transition:
+    background var(--duration-fast) var(--ease-smooth),
+    border-color var(--duration-fast) var(--ease-smooth),
+    transform var(--duration-fast) var(--ease-spring);
 }
 
 .start-over-btn:hover {
-  background-color: #e68900;
-  transform: scale(1.05);
+  background: var(--surface-card-hover);
+  border-color: var(--surface-border-hover);
 }
+
+.start-over-btn:active {
+  transform: scale(0.98);
+}
+
+.start-over-btn:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+/* ==========================================================================
+   13. Feedback Panel
+   ========================================================================== */
 
 .feedback {
   width: 100%;
-  text-align: center;
   padding: 20px;
-  border-radius: 10px;
-  margin-top: 20px;
+  border-radius: var(--radius-card);
+  text-align: center;
+  border: 1px solid;
 }
 
 .feedback.correct {
-  background-color: rgba(76, 175, 80, 0.2);
-  border: 2px solid #4caf50;
+  background: var(--color-success-subtle);
+  border-color: var(--color-success-border);
 }
 
 .feedback.incorrect {
-  background-color: rgba(244, 67, 54, 0.2);
-  border: 2px solid #f44336;
+  background: var(--color-error-subtle);
+  border-color: var(--color-error-border);
 }
 
 .feedback h2 {
   margin-top: 0;
-  font-size: 24px;
+  font-size: var(--text-2xl);
+  color: var(--text-primary);
 }
 
 .feedback p {
-  margin-bottom: 20px;
-  font-size: 18px;
+  margin-bottom: 16px;
+  font-size: var(--text-base);
+  color: var(--text-secondary);
 }
 
+.feedback.correct h2 {
+  color: var(--color-success-text);
+}
+
+.feedback.incorrect h2 {
+  color: var(--color-error-text);
+}
+
+/* Auto-starred inline notice */
 .auto-starred {
-  display: inline-block;
-  color: #ffce00;
-  font-style: italic;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--accent-star);
+  font-style: normal;
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
   margin-left: 8px;
 }
+
+/* ==========================================================================
+   14. Results Screen
+   ========================================================================== */
 
 .test-container.results {
   text-align: center;
@@ -209,46 +396,256 @@
 }
 
 .results-summary {
-  margin-bottom: 40px;
+  margin-bottom: 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
 }
 
 .results-summary h2 {
-  font-size: 36px;
-  margin-bottom: 10px;
+  font-size: var(--text-4xl);
+  font-weight: var(--font-bold);
+  color: var(--text-primary);
+  margin: 0;
 }
+
+.score-badge {
+  font-size: var(--text-2xl);
+  font-weight: var(--font-bold);
+  color: var(--color-success-text);
+  background: var(--color-success-subtle);
+  border: 1px solid var(--color-success-border);
+  padding: 8px 24px;
+  border-radius: var(--radius-pill);
+}
+
+/* ==========================================================================
+   15. Incorrect Answers Review
+   ========================================================================== */
 
 .incorrect-answers {
   max-width: 600px;
-  margin: 0 auto 40px;
+  margin: 0 auto 32px;
   text-align: left;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.incorrect-answers h3 {
+  color: var(--color-error-text);
+  font-size: var(--text-lg);
+  margin-bottom: 12px;
 }
 
 .review-list {
   list-style: none;
   padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
+/* Each review row: card surface with border on all four sides (no double-border slop) */
 .review-item {
-  background-color: rgba(255, 255, 255, 0.1);
-  padding: 15px;
-  border-radius: 8px;
-  margin-bottom: 10px;
+  background: var(--surface-card);
+  border: 1px solid var(--surface-border);
+  padding: 14px 16px;
+  border-radius: var(--radius-btn);
 }
+
+.review-item strong {
+  color: var(--color-error-text);
+}
+
+.review-item .user-answer {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+/* ==========================================================================
+   16. Results Action Buttons Row
+   ========================================================================== */
 
 .results-actions {
   display: flex;
   justify-content: center;
-  margin-top: 20px;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 24px;
 }
 
-@media (max-width: 600px) {
+/* ==========================================================================
+   17. Extended Results Screen Components (TestMode.tsx live classes)
+   ========================================================================== */
+
+/* Summary block: score + stat chips */
+.test-summary {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+.score {
+  font-size: var(--text-4xl);
+  font-weight: var(--font-bold);
+  color: var(--text-primary);
+}
+
+.stats {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+}
+
+.correct-count {
+  color: var(--color-success-text);
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+}
+
+.incorrect-count {
+  color: var(--color-error-text);
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+}
+
+/* Review sections */
+.all-cards {
+  max-width: 600px;
+  margin: 0 auto;
+  text-align: left;
+  width: 100%;
+}
+
+.all-cards h3 {
+  color: var(--text-secondary);
+  font-size: var(--text-lg);
+  margin-bottom: 12px;
+}
+
+.incorrect-cards {
+  max-width: 600px;
+  margin: 0 auto;
+  text-align: left;
+  width: 100%;
+}
+
+.incorrect-cards h3 {
+  color: var(--color-error-text);
+  font-size: var(--text-lg);
+  margin-bottom: 12px;
+}
+
+/* Shared result list */
+.results-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Individual result row */
+.result-item {
+  background: var(--surface-card);
+  border: 1px solid var(--surface-border);
+  padding: 12px 16px;
+  border-radius: var(--radius-btn);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.result-answer {
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+  font-size: var(--text-base);
+}
+
+.result-user-answer {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+/* Test action row (semantic alias of results-actions) */
+.test-actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 24px;
+}
+
+/* ==========================================================================
+   18. Responsive - Mobile (max-width: 768px)
+   ========================================================================== */
+
+@media (max-width: 768px) {
   .test-header {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .test-content {
+    padding: 16px;
+  }
+
+  .submit-btn,
+  .next-btn {
+    width: 100%;
+  }
+
+  .results-actions,
+  .test-actions {
     flex-direction: column;
-    align-items: flex-start;
-    gap: 15px;
+    align-items: center;
   }
-  
-  .progress {
-    align-self: center;
+}
+
+/* ==========================================================================
+   18. Prefers-Reduced-Motion
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-spinner {
+    animation: none !important;
   }
-} 
+
+  .back-to-deck-btn,
+  .back-btn,
+  .cancel-btn,
+  .submit-btn,
+  .next-btn,
+  .start-over-btn {
+    transition: none !important;
+  }
+
+  .back-to-deck-btn:hover,
+  .back-btn:hover,
+  .cancel-btn:hover {
+    transform: none !important;
+  }
+
+  .submit-btn:hover,
+  .submit-btn:active {
+    transform: none !important;
+  }
+
+  .next-btn:hover,
+  .next-btn:active {
+    transform: none !important;
+  }
+
+  .start-over-btn:active {
+    transform: none !important;
+  }
+
+  .input-group input {
+    transition: none !important;
+  }
+}
