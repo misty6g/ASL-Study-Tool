@@ -95,6 +95,11 @@ jest.mock('axios', () => {
     post: postFn,
     delete: deleteFn,
     create: () => client,
+    defaults: {
+      headers: {
+        common: {},
+      },
+    },
   };
 
   return {
@@ -104,6 +109,11 @@ jest.mock('axios', () => {
     post: postFn,
     delete: deleteFn,
     create: () => client,
+    defaults: {
+      headers: {
+        common: {},
+      },
+    },
   };
 });
 

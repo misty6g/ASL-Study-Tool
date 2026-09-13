@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
+import { useAuth } from '../context/AuthContext';
 import './TestMode.css';
 import { LOCAL_STORAGE_STARRED_KEY } from './constants';
 import { Card } from '../types/Card';
@@ -20,6 +21,7 @@ const shuffleArray = <T extends unknown>(array: T[]): T[] => {
 };
 
 const TestMode: React.FC<TestModeProps> = ({ deckId }) => {
+  const { user } = useAuth();
   const [cards, setCards] = useState<Card[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -302,19 +304,20 @@ const TestMode: React.FC<TestModeProps> = ({ deckId }) => {
         // (since these cards would already be starred)
         if (testMode !== 'starred' && !starredCardIds.includes(currentCard.id)) {
           try {
-            // In a real app, you'd get the actual user ID from auth
-            const demoUserId = "demo-user-id"; // Hardcoded for demo
+            const targetUserId = user?.id || "demo-user-id";
+            const userStarredStorageKey = user?.id ? `asl_study_tool_starred_cards_${user.id}` : LOCAL_STORAGE_STARRED_KEY;
             
             // Update local state first
             const newStarredIds = [...starredCardIds, currentCard.id];
             setStarredCardIds(newStarredIds);
             
             // Save to localStorage
+            localStorage.setItem(userStarredStorageKey, JSON.stringify(newStarredIds));
             localStorage.setItem(LOCAL_STORAGE_STARRED_KEY, JSON.stringify(newStarredIds));
             
             // Try to star on server (but don't fail if it doesn't work)
             await axios.post(`${process.env.REACT_APP_API_URL}/api/cards/${currentCard.id}/star`, { 
-              userId: demoUserId 
+              userId: targetUserId 
             });
             
             console.log("Card auto-starred for review");
@@ -336,6 +339,21 @@ const TestMode: React.FC<TestModeProps> = ({ deckId }) => {
       setSubmitted(false);
     } else {
       setTestComplete(true);
+      try {
+        const targetUserId = user?.id || 'demo-user-id';
+        const total = cards.length;
+        const correct = results.correct.length;
+        const score = total > 0 ? Math.round((correct / total) * 100) : 0;
+        axios.post(`${process.env.REACT_APP_API_URL}/api/test/results`, {
+          userId: targetUserId,
+          deckId,
+          score,
+          totalQuestions: total,
+          correctCount: correct
+        }).catch(() => {});
+      } catch (e) {
+        // Ignore test persistence failure
+      }
     }
   };
 

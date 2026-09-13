@@ -11,6 +11,8 @@ import { visionService } from '../practice/visionService';
 import { evaluateAttempt } from '../practice/evaluator';
 import { resolveVideoSources } from '../utils/videoUtils';
 import PracticeDisclaimerModal from './PracticeDisclaimerModal';
+import axios from 'axios';
+import { useAuth } from '../context/AuthContext';
 import './PracticeModal.css';
 
 interface PracticeModalProps {
@@ -24,6 +26,7 @@ type CaptureState = 'init' | 'ready' | 'countdown' | 'recording' | 'evaluating' 
 const LOCAL_STORAGE_DOMINANT_HAND = 'asl_practice_dominant_hand';
 
 export const PracticeModal: React.FC<PracticeModalProps> = ({ spec, videoUrl, onClose }) => {
+  const { user } = useAuth();
   const [dominantHand, setDominantHand] = useState<DominantHand>(() => {
     const saved = localStorage.getItem(LOCAL_STORAGE_DOMINANT_HAND);
     return saved === 'left' ? 'left' : 'right';
@@ -52,7 +55,13 @@ export const PracticeModal: React.FC<PracticeModalProps> = ({ spec, videoUrl, on
   useEffect(() => {
     dominantHandRef.current = dominantHand;
     localStorage.setItem(LOCAL_STORAGE_DOMINANT_HAND, dominantHand);
-  }, [dominantHand]);
+    try {
+      const targetUserId = user?.id || 'demo-user-id';
+      axios.post(`${process.env.REACT_APP_API_URL || 'http://localhost:8080'}/api/users/${targetUserId}/preferences`, {
+        dominantHand
+      }).catch(() => {});
+    } catch {}
+  }, [dominantHand, user?.id]);
 
   useEffect(() => {
     showOverlayRef.current = showOverlay;
@@ -210,7 +219,21 @@ export const PracticeModal: React.FC<PracticeModalProps> = ({ spec, videoUrl, on
 
     setEvaluationResult(evaluation);
     setCaptureState('results');
-  }, [spec]);
+
+    try {
+      const targetUserId = user?.id || 'demo-user-id';
+      axios.post(`${process.env.REACT_APP_API_URL || 'http://localhost:8080'}/api/practice/attempts`, {
+        userId: targetUserId,
+        signId: spec.id,
+        overallScore: Math.round(evaluation.overallScore),
+        dominantHand: dominantHandRef.current,
+        durationMs: 3500,
+        dimensionResults: evaluation.dimensionResults || {}
+      }).catch(() => {});
+    } catch {
+      // Ignore attempt persistence error
+    }
+  }, [spec, user?.id]);
 
   // Start recording workflow: countdown -> recording (3.5s) -> evaluate
   const startPracticeCapture = () => {

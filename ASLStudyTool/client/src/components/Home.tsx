@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
+import { useAuth } from '../context/AuthContext';
 import './Home.css';
 
 const LOCAL_STORAGE_STARRED_KEY = 'asl_study_tool_starred_cards';
@@ -47,10 +48,18 @@ const Home: React.FC = () => {
 
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
+
+  const userStorageKey = useMemo(() => {
+    return user?.id ? `asl_study_tool_starred_cards_${user.id}` : LOCAL_STORAGE_STARRED_KEY;
+  }, [user?.id]);
 
   // Helper to read starred cards from localStorage safely
   const readStarredFromLocalStorage = useCallback((): SearchResult[] => {
-    const localStarredStr = localStorage.getItem(LOCAL_STORAGE_STARRED_KEY);
+    let localStarredStr = localStorage.getItem(userStorageKey);
+    if (!localStarredStr && userStorageKey !== LOCAL_STORAGE_STARRED_KEY) {
+      localStarredStr = localStorage.getItem(LOCAL_STORAGE_STARRED_KEY);
+    }
     if (!localStarredStr) return [];
     try {
       const localStarredIds = JSON.parse(localStarredStr);
@@ -68,13 +77,13 @@ const Home: React.FC = () => {
     } catch (e) {
       return [];
     }
-  }, []);
+  }, [userStorageKey]);
 
   // Synchronize starred cards across API, localStorage, and events
   const syncStarredCards = useCallback(async () => {
-    const demoUserId = 'demo-user-id';
+    const targetUserId = user?.id || 'demo-user-id';
     try {
-      const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/users/${demoUserId}/starred-cards`);
+      const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/users/${targetUserId}/starred-cards`);
       if (response.data && Array.isArray(response.data.cards) && response.data.cards.length > 0) {
         setStarredCards(response.data.cards);
         return;
@@ -85,7 +94,7 @@ const Home: React.FC = () => {
 
     const localCards = readStarredFromLocalStorage();
     setStarredCards(localCards);
-  }, [readStarredFromLocalStorage]);
+  }, [user?.id, readStarredFromLocalStorage]);
 
   // Initial starred cards load and cross-tab storage / focus listeners
   useEffect(() => {
@@ -157,22 +166,8 @@ const Home: React.FC = () => {
       setError(null);
 
       try {
-        let demoUserId = 'demo-user-id';
-        try {
-          const usersResponse = await axios.get(`${process.env.REACT_APP_API_URL}/api/users`);
-          if (Array.isArray(usersResponse.data) && usersResponse.data.length > 0) {
-            const found = usersResponse.data.find((user: User) => user.email === 'demo@example.com');
-            if (found) {
-              demoUserId = found.id;
-            } else {
-              demoUserId = usersResponse.data[0].id;
-            }
-          }
-        } catch (uErr) {
-          // Use default demo user id
-        }
-
-        const decksResponse = await axios.get(`${process.env.REACT_APP_API_URL}/api/decks/${demoUserId}`);
+        const targetUserId = user?.id || 'demo-user-id';
+        const decksResponse = await axios.get(`${process.env.REACT_APP_API_URL}/api/decks/${targetUserId}`);
         if (!decksResponse.data) {
           throw new Error('No decks data received');
         }

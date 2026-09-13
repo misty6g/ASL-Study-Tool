@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import './Navigation.css';
 
 export interface BreadcrumbItem {
@@ -22,13 +23,31 @@ const Navigation: React.FC<NavigationProps> = ({
 }) => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { user, isAuthenticated, logout, openAuthModal } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const navRef = useRef<HTMLElement>(null);
+  const userMenuRef = useRef<HTMLDivElement>(null);
 
-  // Close mobile drawer on route change
+  // Close mobile drawer and user menu on route change
   useEffect(() => {
     setMobileMenuOpen(false);
+    setUserMenuOpen(false);
   }, [location.pathname]);
+
+  // Handle outside click to close user menu dropdown
+  useEffect(() => {
+    if (!userMenuOpen) return;
+
+    const handleClickOutside = (e: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setUserMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [userMenuOpen]);
 
   // Handle ESC key to close mobile menu (only attached when drawer is open)
   useEffect(() => {
@@ -332,6 +351,98 @@ const Navigation: React.FC<NavigationProps> = ({
           </NavLink>
         </nav>
 
+        {/* User Authentication & Profile Cluster */}
+        <div className="nav-auth-cluster">
+          {isAuthenticated && user ? (
+            <div className="nav-user-dropdown-container" ref={userMenuRef}>
+              <button
+                type="button"
+                className="nav-user-pill-btn"
+                onClick={() => setUserMenuOpen(!userMenuOpen)}
+                aria-expanded={userMenuOpen}
+                aria-haspopup="true"
+                aria-label={`User account menu for ${user.displayName || user.email}`}
+                data-testid="nav-user-menu-btn"
+              >
+                <span className="nav-user-avatar" aria-hidden="true">
+                  {(user.displayName || user.email || 'U').charAt(0).toUpperCase()}
+                </span>
+                <span className="nav-user-name">{user.displayName || user.email.split('@')[0]}</span>
+                <svg
+                  viewBox="0 0 24 24"
+                  width="14"
+                  height="14"
+                  stroke="currentColor"
+                  strokeWidth="2.2"
+                  fill="none"
+                  className={`nav-chevron ${userMenuOpen ? 'open' : ''}`}
+                  aria-hidden="true"
+                >
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </button>
+
+              {userMenuOpen && (
+                <div className="nav-user-dropdown-menu" role="menu" data-testid="nav-user-dropdown">
+                  <div className="nav-dropdown-header">
+                    <span className="nav-dropdown-user-name">{user.displayName || 'Learner'}</span>
+                    <span className="nav-dropdown-user-email">{user.email}</span>
+                    <span className="nav-dropdown-status-badge">Cloud Persistence Active</span>
+                  </div>
+
+                  <div className="nav-dropdown-divider" />
+
+                  <Link
+                    to="/deck/all-starred"
+                    className="nav-dropdown-item"
+                    role="menuitem"
+                    onClick={() => setUserMenuOpen(false)}
+                  >
+                    <span className="nav-dropdown-icon star-gold" aria-hidden="true">⭐</span>
+                    <span>Starred Cards</span>
+                  </Link>
+
+                  <Link
+                    to="/welcome"
+                    className="nav-dropdown-item"
+                    role="menuitem"
+                    onClick={() => setUserMenuOpen(false)}
+                  >
+                    <span className="nav-dropdown-icon" aria-hidden="true">📊</span>
+                    <span>Study Hub</span>
+                  </Link>
+
+                  <div className="nav-dropdown-divider" />
+
+                  <button
+                    type="button"
+                    className="nav-dropdown-item logout-item"
+                    role="menuitem"
+                    onClick={() => {
+                      setUserMenuOpen(false);
+                      logout();
+                    }}
+                    data-testid="nav-logout-btn"
+                  >
+                    <span className="nav-dropdown-icon" aria-hidden="true">🚪</span>
+                    <span>Sign Out</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="nav-signin-btn"
+              onClick={() => openAuthModal('login')}
+              aria-label="Sign in or register"
+              data-testid="nav-signin-btn"
+            >
+              <span>Sign In</span>
+            </button>
+          )}
+        </div>
+
         {/* Mobile Hamburger Toggle */}
         <button
           type="button"
@@ -457,6 +568,44 @@ const Navigation: React.FC<NavigationProps> = ({
             <span>Test Mode</span>
           </NavLink>
         </nav>
+
+        {/* Mobile User Profile Section */}
+        <div className="mobile-drawer-auth-section">
+          {isAuthenticated && user ? (
+            <div className="mobile-user-profile-box">
+              <div className="mobile-user-row">
+                <span className="nav-user-avatar" aria-hidden="true">
+                  {(user.displayName || user.email || 'U').charAt(0).toUpperCase()}
+                </span>
+                <div className="mobile-user-meta">
+                  <span className="mobile-user-display-name">{user.displayName || 'Learner'}</span>
+                  <span className="mobile-user-email-text">{user.email}</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="mobile-auth-action-btn logout"
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  logout();
+                }}
+              >
+                Sign Out
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="mobile-auth-action-btn signin"
+              onClick={() => {
+                setMobileMenuOpen(false);
+                openAuthModal('login');
+              }}
+            >
+              Sign In or Register
+            </button>
+          )}
+        </div>
 
         {showBack && (
           <div className="mobile-drawer-back-section">

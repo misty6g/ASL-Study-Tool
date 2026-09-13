@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import './Welcome.css';
 
 const PRESET_WORDS = ['WELCOME', 'HELLO', 'ASL', 'LEARN', 'FRIEND', 'PEACE', 'SIGNS'];
@@ -37,12 +38,22 @@ const STORAGE_NAME_KEY = 'asl_student_name';
 const STORAGE_STARRED_KEY = 'asl_study_tool_starred_cards';
 
 export const Welcome: React.FC = () => {
+  const { user } = useAuth();
+
   // Learner greeting state
   const [studentName, setStudentName] = useState<string>(() => {
-    return localStorage.getItem(STORAGE_NAME_KEY) || 'Learner';
+    return user?.displayName || localStorage.getItem(STORAGE_NAME_KEY) || 'Learner';
   });
   const [isEditingName, setIsEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(studentName);
+
+  // Sync with user's profile display name
+  useEffect(() => {
+    if (user?.displayName) {
+      setStudentName(user.displayName);
+      setNameInput(user.displayName);
+    }
+  }, [user?.displayName]);
 
   // Active word and active hovered letter
   const [selectedWord, setSelectedWord] = useState<string>('WELCOME');
@@ -59,8 +70,12 @@ export const Welcome: React.FC = () => {
   const [starredCount, setStarredCount] = useState<number>(0);
 
   useEffect(() => {
+    const userStorageKey = user?.id ? `asl_study_tool_starred_cards_${user.id}` : STORAGE_STARRED_KEY;
     try {
-      const stored = localStorage.getItem(STORAGE_STARRED_KEY);
+      let stored = localStorage.getItem(userStorageKey);
+      if (!stored && userStorageKey !== STORAGE_STARRED_KEY) {
+        stored = localStorage.getItem(STORAGE_STARRED_KEY);
+      }
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed)) {
@@ -70,7 +85,7 @@ export const Welcome: React.FC = () => {
     } catch {
       setStarredCount(0);
     }
-  }, []);
+  }, [user?.id]);
 
   // Play subtle tick on letter hover if sound enabled
   const playTick = useCallback(() => {

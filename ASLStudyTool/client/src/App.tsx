@@ -1,6 +1,8 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, useParams } from 'react-router-dom';
+import { AuthProvider } from './context/AuthContext';
 import Navigation from './components/Navigation';
+import AuthModal from './components/AuthModal';
 import Home from './components/Home';
 import Welcome from './components/Welcome';
 import Deck from './components/Deck';
@@ -22,22 +24,25 @@ const TestModeWrapper = () => {
 function App() {
   return (
     <Router>
-      <div className="App">
-        <Navigation />
-        <main id="main-content" className="app-main-content">
-          <Routes>
-            <Route path="/" element={<Welcome />} />
-            <Route path="/home" element={<Home />} />
-            <Route path="/welcome" element={<Welcome />} />
-            <Route path="/deck/:deckId" element={<DeckWrapper />} />
-            <Route path="/test/all-decks" element={<TestMode deckId="all-decks" />} />
-            <Route path="/test/:deckId" element={<TestModeWrapper />} />
-            <Route path="/fingerspelling" element={<FingerspellingPractice />} />
-            <Route path="/asl-ms" element={<FingerspellingPractice />} />
-          </Routes>
-        </main>
-        <Footer />
-      </div>
+      <AuthProvider>
+        <div className="App">
+          <Navigation />
+          <AuthModal />
+          <main id="main-content" className="app-main-content">
+            <Routes>
+              <Route path="/" element={<Welcome />} />
+              <Route path="/home" element={<Home />} />
+              <Route path="/welcome" element={<Welcome />} />
+              <Route path="/deck/:deckId" element={<DeckWrapper />} />
+              <Route path="/test/all-decks" element={<TestMode deckId="all-decks" />} />
+              <Route path="/test/:deckId" element={<TestModeWrapper />} />
+              <Route path="/fingerspelling" element={<FingerspellingPractice />} />
+              <Route path="/asl-ms" element={<FingerspellingPractice />} />
+            </Routes>
+          </main>
+          <Footer />
+        </div>
+      </AuthProvider>
     </Router>
   );
 }

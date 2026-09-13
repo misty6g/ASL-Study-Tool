@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef, createRef, useCallback } from 'reac
 import Flashcard, { FlashcardHandle } from './Flashcard';
 import axios from 'axios';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import './Deck.css'; // We'll create this for the back button
 import { LOCAL_STORAGE_STARRED_KEY } from './constants';
 
@@ -36,92 +37,82 @@ const Deck: React.FC<DeckProps> = ({ deckId }) => {
   const [loadingStarred, setLoadingStarred] = useState(true);
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
   const cardRefs = useRef<(React.RefObject<FlashcardHandle>)[]>([]);
   const cardContainerRefs = useRef<(React.RefObject<HTMLDivElement>)[]>([]);
   const observerRef = useRef<IntersectionObserver | null>(null);
   const loadMoreTriggerRef = useRef<HTMLDivElement>(null);
   let isStarToggleInProgress = false;
 
+  const userStarredStorageKey = user?.id ? `asl_study_tool_starred_cards_${user.id}` : LOCAL_STORAGE_STARRED_KEY;
+
   // Load starred cards
   useEffect(() => {
     const fetchStarredCards = async () => {
       try {
         // First try to get from localStorage for immediate UI update
-        const localStarred = localStorage.getItem(LOCAL_STORAGE_STARRED_KEY);
+        let localStarred = localStorage.getItem(userStarredStorageKey);
+        if (!localStarred && userStarredStorageKey !== LOCAL_STORAGE_STARRED_KEY) {
+          localStarred = localStorage.getItem(LOCAL_STORAGE_STARRED_KEY);
+        }
         if (localStarred) {
           try {
             const parsedStarred = JSON.parse(localStarred);
-            console.log('Using starred cards from localStorage:', parsedStarred);
-            // Only update if we actually have stars (prevent overwriting with empty array)
             if (parsedStarred && parsedStarred.length > 0) {
               setStarredCardIds(parsedStarred);
             }
           } catch (parseErr) {
             console.error('Error parsing starred cards from localStorage:', parseErr);
-            // Don't set to empty here, just continue to server
           }
         }
 
         // Then try server
         try {
-          const demoUserId = "demo-user-id"; // Hardcoded for demo
-          const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/users/${demoUserId}/starred-card-ids`);
+          const targetUserId = user?.id || 'demo-user-id';
+          const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/users/${targetUserId}/starred-card-ids`);
           
           if (response.data && response.data.cardIds && response.data.cardIds.length > 0) {
-            console.log('Got starred cards from server:', response.data.cardIds.length);
             setStarredCardIds(response.data.cardIds);
-            // Always keep localStorage in sync with server
+            localStorage.setItem(userStarredStorageKey, JSON.stringify(response.data.cardIds));
             localStorage.setItem(LOCAL_STORAGE_STARRED_KEY, JSON.stringify(response.data.cardIds));
           }
-          // Important: If server returns empty but localStorage has values, keep the localStorage values
-          // This prevents accidentally clearing starred cards if server times out or returns empty
         } catch (serverErr) {
           console.error("Error fetching starred cards from server:", serverErr);
-          // No action needed here since we already tried localStorage
         }
       } catch (err) {
         console.error("Error in starred cards fetching logic:", err);
-        // Keep any existing starred cards rather than setting to empty
       } finally {
         setLoadingStarred(false);
       }
     };
 
     fetchStarredCards();
-  }, []);
+  }, [user?.id, userStarredStorageKey]);
 
   // Function to refresh the starred cards with safeguards
   const refreshStarredCards = async () => {
     try {
-      console.log('Refreshing starred cards list');
-      
-      // First check if we have local state with starred cards
-      if (starredCardIds.length > 0) {
-        console.log('Current starred cards in state:', starredCardIds);
+      let localStarred = localStorage.getItem(userStarredStorageKey);
+      if (!localStarred && userStarredStorageKey !== LOCAL_STORAGE_STARRED_KEY) {
+        localStarred = localStorage.getItem(LOCAL_STORAGE_STARRED_KEY);
       }
-      
-      // Check localStorage first
-      const localStarred = localStorage.getItem(LOCAL_STORAGE_STARRED_KEY);
       let localStarredIds: string[] = [];
       
       if (localStarred) {
         try {
           localStarredIds = JSON.parse(localStarred);
-          console.log('Found', localStarredIds.length, 'starred cards in localStorage');
         } catch (parseErr) {
           console.error('Error parsing localStorage starred cards:', parseErr);
         }
       }
       
-      // Try server 
-      const demoUserId = "demo-user-id"; // Hardcoded for demo
+      const targetUserId = user?.id || 'demo-user-id';
       try {
-        const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/users/${demoUserId}/starred-card-ids`);
+        const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/users/${targetUserId}/starred-card-ids`);
         
         if (response.data && response.data.cardIds && response.data.cardIds.length > 0) {
-          console.log('Refreshed starred cards from server:', response.data.cardIds.length);
-          // Only update if server returns non-empty array
           setStarredCardIds(response.data.cardIds);
+          localStorage.setItem(userStarredStorageKey, JSON.stringify(response.data.cardIds));
           localStorage.setItem(LOCAL_STORAGE_STARRED_KEY, JSON.stringify(response.data.cardIds));
           return;
         } else {
@@ -174,28 +165,24 @@ const Deck: React.FC<DeckProps> = ({ deckId }) => {
     }
     
     // Save to localStorage immediately
+    localStorage.setItem(userStarredStorageKey, JSON.stringify(newStarredIds));
     localStorage.setItem(LOCAL_STORAGE_STARRED_KEY, JSON.stringify(newStarredIds));
     
     // Try to update the server as well (knowing it might fail)
     try {
-      const demoUserId = "demo-user-id"; // Hardcoded for demo
+      const targetUserId = user?.id || "demo-user-id";
       
       if (isStarred) {
         // Star the card
-        console.log(`Sending API request to star card ${cardId}`);
-        await axios.post(`${process.env.REACT_APP_API_URL}/api/cards/${cardId}/star`, { userId: demoUserId });
-        console.log('Star API request sent');
+        await axios.post(`${process.env.REACT_APP_API_URL}/api/cards/${cardId}/star`, { userId: targetUserId });
       } else {
         // Unstar the card
-        console.log(`Sending API request to unstar card ${cardId}`);
         await axios.delete(`${process.env.REACT_APP_API_URL}/api/cards/${cardId}/star`, { 
-          data: { userId: demoUserId } 
+          data: { userId: targetUserId } 
         });
-        console.log('Unstar API request sent');
       }
     } catch (err) {
       console.error(`Error ${isStarred ? 'starring' : 'unstarring'} card on server:`, err);
-      console.log('Using localStorage for persistence instead');
       // No need to revert UI state since we've already updated localStorage
     }
   };
@@ -274,12 +261,9 @@ const Deck: React.FC<DeckProps> = ({ deckId }) => {
           }
           
           // Get all decks
-          const usersResponse = await axios.get(`${process.env.REACT_APP_API_URL}/api/users`);
-          const demoUser = usersResponse.data.find((user: any) => user.email === 'demo@example.com');
-          
-          if (demoUser) {
-            const decksResponse = await axios.get(`${process.env.REACT_APP_API_URL}/api/decks/${demoUser.id}`);
-            const allDecks = decksResponse.data;
+          const targetUserId = user?.id || 'demo-user-id';
+          const decksResponse = await axios.get(`${process.env.REACT_APP_API_URL}/api/decks/${targetUserId}`);
+          const allDecks = Array.isArray(decksResponse.data) ? decksResponse.data : [];
             console.log(`Found ${allDecks.length} decks to search for starred cards`);
             
             // Collect cards from all decks
@@ -314,10 +298,9 @@ const Deck: React.FC<DeckProps> = ({ deckId }) => {
             cardContainerRefs.current = Array(filteredCards.length)
               .fill(null)
               .map(() => createRef<HTMLDivElement>() as React.RefObject<HTMLDivElement>);
-          }
           
-          setLoading(false);
-          return; // Exit early
+            setLoading(false);
+            return; // Exit early
         }
         
         // Regular deck handling
