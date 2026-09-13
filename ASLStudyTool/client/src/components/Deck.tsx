@@ -42,7 +42,15 @@ const Deck: React.FC<DeckProps> = ({ deckId }) => {
   const cardContainerRefs = useRef<(React.RefObject<HTMLDivElement>)[]>([]);
   const observerRef = useRef<IntersectionObserver | null>(null);
   const loadMoreTriggerRef = useRef<HTMLDivElement>(null);
-  let isStarToggleInProgress = false;
+  const [isServerWaking, setIsServerWaking] = useState(false);
+
+  useEffect(() => {
+    if (!loading) return;
+    const timer = setTimeout(() => {
+      setIsServerWaking(true);
+    }, 3500);
+    return () => clearTimeout(timer);
+  }, [loading]);
 
   const userStarredStorageKey = user?.id ? `asl_study_tool_starred_cards_${user.id}` : LOCAL_STORAGE_STARRED_KEY;
 
@@ -475,7 +483,13 @@ const Deck: React.FC<DeckProps> = ({ deckId }) => {
 
   if (loading) return (
     <div className="loading-container">
-      <div>Loading...</div>
+      <div className="loading-spinner"></div>
+      <div style={{ marginTop: '0.75rem' }}>Loading cards...</div>
+      {isServerWaking && (
+        <p style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: 'var(--text-secondary)', maxWidth: '380px', textAlign: 'center', lineHeight: 1.4 }}>
+          Connecting to cloud backend on Render. Free-tier instances spin down when idle and take ~20–30s to wake up on first visit.
+        </p>
+      )}
     </div>
   );
   

@@ -45,6 +45,15 @@ const Home: React.FC = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [starredCards, setStarredCards] = useState<SearchResult[]>([]);
   const [loadingStarred, setLoadingStarred] = useState(true);
+  const [isServerWaking, setIsServerWaking] = useState(false);
+
+  useEffect(() => {
+    if (!loading) return;
+    const timer = setTimeout(() => {
+      setIsServerWaking(true);
+    }, 3500);
+    return () => clearTimeout(timer);
+  }, [loading]);
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -280,6 +289,11 @@ const Home: React.FC = () => {
       <div className="home-container loading">
         <div className="loading-spinner"></div>
         <p>Loading decks...</p>
+        {isServerWaking && (
+          <p style={{ marginTop: '0.75rem', fontSize: '0.85rem', color: 'var(--text-secondary)', maxWidth: '380px', textAlign: 'center', lineHeight: 1.4 }}>
+            Connecting to cloud backend on Render. Free-tier instances spin down when idle and take ~20–30s to wake up on first visit.
+          </p>
+        )}
       </div>
     );
   }
