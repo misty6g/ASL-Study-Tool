@@ -22,6 +22,7 @@ const https_1 = __importDefault(require("https"));
 const helmet_1 = __importDefault(require("helmet"));
 const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
+const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 // Load environment variables
 dotenv_1.default.config();
 const app = (0, express_1.default)();
@@ -34,14 +35,21 @@ app.use((0, helmet_1.default)({
 // Middleware
 app.use((0, cors_1.default)({
     origin: (origin, callback) => {
-        // Allow requests with no origin (curl/mobile/local) or from any localhost/127.0.0.1 port
-        if (!origin || origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1') || origin === corsOrigin) {
+        // Allow requests with no origin (curl/mobile/local), localhost, any Vercel preview/prod domain, or configured CORS_ORIGIN
+        if (!origin ||
+            origin.startsWith('http://localhost') ||
+            origin.startsWith('http://127.0.0.1') ||
+            origin.endsWith('.vercel.app') ||
+            origin === corsOrigin ||
+            (corsOrigin && corsOrigin.split(',').map(s => s.trim()).includes(origin)) ||
+            corsOrigin === '*') {
             callback(null, true);
         }
         else {
             callback(new Error('Not allowed by CORS'));
         }
     },
+    credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
@@ -213,7 +221,11 @@ app.get('/api/videos/stream/:fileId', videoStreamLimiter, (req, res) => {
 // Initialize Supabase client
 const supabaseUrl = process.env.SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_KEY || '';
-const supabase = (0, supabase_js_1.createClient)(supabaseUrl, supabaseKey);
+const isSupabaseConfigured = Boolean(supabaseUrl &&
+    supabaseKey &&
+    !supabaseUrl.includes('your-project') &&
+    supabaseUrl.startsWith('http'));
+const supabase = isSupabaseConfigured ? (0, supabase_js_1.createClient)(supabaseUrl, supabaseKey) : null;
 // List of vocabulary files to process
 const vocabFiles = [
     { filename: 'VocabularyRelatedToConversation.txt', title: 'ASL Conversation Vocabulary' },
@@ -226,11 +238,71 @@ const vocabFiles = [
     { filename: 'VocabularyRelatedToPronouns.txt', title: 'ASL Pronouns' },
     { filename: 'VocabularyRelatingToMajors.txt', title: 'ASL Majors Vocabulary' }
 ];
+const JWT_SECRET = process.env.JWT_SECRET || 'asl-study-tool-jwt-dev-secret-key-change-in-prod';
+const generateToken = (user) => {
+    return jsonwebtoken_1.default.sign({ id: user.id, email: user.email, displayName: user.displayName || 'Learner' }, JWT_SECRET, { expiresIn: '30d' });
+};
+const authenticateToken = (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.substring(7) : null;
+    if (!token) {
+        return res.status(401).json({ error: 'Authentication required' });
+    }
+    jsonwebtoken_1.default.verify(token, JWT_SECRET, (err, user) => {
+        if (err) {
+            return res.status(403).json({ error: 'Invalid or expired session token' });
+        }
+        req.user = user;
+        next();
+    });
+};
+const optionalAuthenticateToken = (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.substring(7) : null;
+    if (!token) {
+        req.user = null;
+        return next();
+    }
+    jsonwebtoken_1.default.verify(token, JWT_SECRET, (err, user) => {
+        if (!err && user) {
+            req.user = user;
+        }
+        else {
+            req.user = null;
+        }
+        next();
+    });
+};
+const getStarredSetForUser = (userId) => {
+    const safeId = userId || 'demo-user-id';
+    if (!localStore.starredCardIdsByUser.has(safeId)) {
+        localStore.starredCardIdsByUser.set(safeId, new Set());
+    }
+    return localStore.starredCardIdsByUser.get(safeId);
+};
 const localStore = {
-    users: [{ id: 'demo-user-id', email: 'demo@example.com' }],
+    users: [
+        {
+            id: 'demo-user-id',
+            email: 'demo@example.com',
+            passwordHash: bcryptjs_1.default.hashSync('demo123', 10),
+            displayName: 'Demo Student',
+            createdAt: new Date().toISOString(),
+        },
+    ],
     decks: [],
     cards: [],
-    starredCardIds: new Set(),
+    starredCardIdsByUser: new Map([
+        ['demo-user-id', new Set()]
+    ]),
+    userPreferences: new Map([
+        ['demo-user-id', { dominantHand: 'right', soundEnabled: false }]
+    ]),
+    practiceAttempts: new Map(),
+    testResults: new Map(),
+    get starredCardIds() {
+        return getStarredSetForUser('demo-user-id');
+    }
 };
 const populateLocalStore = () => {
     localStore.decks = [];
@@ -243,7 +315,8 @@ const populateLocalStore = () => {
         localStore.decks.push({
             id: deckId,
             title: vf.title,
-            user_id: demoUserId
+            user_id: demoUserId,
+            is_global: true
         });
         const vocabularyFilePath = path_1.default.join(__dirname, `../../Videos/Beginning ASL 1/${vf.filename}`);
         try {
@@ -275,6 +348,98 @@ const populateLocalStore = () => {
         }
     }
     console.log(`Local fallback store initialized: ${localStore.decks.length} decks, ${localStore.cards.length} cards, ${whitelistedFileIds.size} whitelisted video streams.`);
+    loadLocalData();
+};
+const dataDir = path_1.default.join(__dirname, '../../data');
+if (!fs_1.default.existsSync(dataDir)) {
+    try {
+        fs_1.default.mkdirSync(dataDir, { recursive: true });
+    }
+    catch (err) {
+        console.warn('Could not create data directory:', err);
+    }
+}
+const dbFilePath = path_1.default.join(dataDir, 'local_db.json');
+let saveTimeout = null;
+const persistLocalData = () => {
+    if (saveTimeout)
+        clearTimeout(saveTimeout);
+    saveTimeout = setTimeout(() => {
+        try {
+            const dataToSave = {
+                users: localStore.users,
+                starredCardIdsByUser: Object.fromEntries(Array.from(localStore.starredCardIdsByUser.entries()).map(([k, v]) => [k, Array.from(v)])),
+                userPreferences: Object.fromEntries(localStore.userPreferences.entries()),
+                practiceAttempts: Object.fromEntries(localStore.practiceAttempts.entries()),
+                testResults: Object.fromEntries(localStore.testResults.entries()),
+                customDecks: localStore.decks.filter(d => !d.is_global),
+                customCards: localStore.cards.filter(c => !c.id.startsWith('card-'))
+            };
+            fs_1.default.writeFileSync(dbFilePath, JSON.stringify(dataToSave, null, 2), 'utf-8');
+        }
+        catch (err) {
+            console.warn('Failed to persist local DB to disk:', err);
+        }
+    }, 100);
+};
+const loadLocalData = () => {
+    try {
+        if (fs_1.default.existsSync(dbFilePath)) {
+            const raw = fs_1.default.readFileSync(dbFilePath, 'utf-8');
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed.users)) {
+                for (const u of parsed.users) {
+                    if (!localStore.users.some(existing => existing.id === u.id || existing.email === u.email)) {
+                        localStore.users.push(u);
+                    }
+                }
+            }
+            if (parsed.starredCardIdsByUser && typeof parsed.starredCardIdsByUser === 'object') {
+                for (const [userId, ids] of Object.entries(parsed.starredCardIdsByUser)) {
+                    if (Array.isArray(ids)) {
+                        localStore.starredCardIdsByUser.set(userId, new Set(ids));
+                    }
+                }
+            }
+            if (parsed.userPreferences && typeof parsed.userPreferences === 'object') {
+                for (const [userId, prefs] of Object.entries(parsed.userPreferences)) {
+                    localStore.userPreferences.set(userId, prefs);
+                }
+            }
+            if (parsed.practiceAttempts && typeof parsed.practiceAttempts === 'object') {
+                for (const [userId, attempts] of Object.entries(parsed.practiceAttempts)) {
+                    if (Array.isArray(attempts)) {
+                        localStore.practiceAttempts.set(userId, attempts);
+                    }
+                }
+            }
+            if (parsed.testResults && typeof parsed.testResults === 'object') {
+                for (const [userId, results] of Object.entries(parsed.testResults)) {
+                    if (Array.isArray(results)) {
+                        localStore.testResults.set(userId, results);
+                    }
+                }
+            }
+            if (Array.isArray(parsed.customDecks)) {
+                for (const cd of parsed.customDecks) {
+                    if (!localStore.decks.some(d => d.id === cd.id)) {
+                        localStore.decks.push(cd);
+                    }
+                }
+            }
+            if (Array.isArray(parsed.customCards)) {
+                for (const cc of parsed.customCards) {
+                    if (!localStore.cards.some(c => c.id === cc.id)) {
+                        localStore.cards.push(cc);
+                    }
+                }
+            }
+            console.log(`Loaded persisted local data from disk: ${localStore.users.length} users, ${localStore.starredCardIdsByUser.size} user star collections.`);
+        }
+    }
+    catch (err) {
+        console.warn('Failed to load persisted local data from disk:', err);
+    }
 };
 // Function to clear existing data
 const clearExistingData = () => __awaiter(void 0, void 0, void 0, function* () {
@@ -389,6 +554,148 @@ const initializeData = () => __awaiter(void 0, void 0, void 0, function* () {
 app.get('/health', (req, res) => {
     res.json({ status: 'ok' });
 });
+// --- Authentication Endpoints ---
+// Register a new user
+app.post('/api/auth/register', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a;
+    try {
+        const { email, password, displayName } = req.body;
+        if (!email || typeof email !== 'string' || !email.includes('@')) {
+            return res.status(400).json({ error: 'Valid email address is required' });
+        }
+        if (!password || typeof password !== 'string' || password.length < 6) {
+            return res.status(400).json({ error: 'Password must be at least 6 characters' });
+        }
+        const cleanEmail = email.trim().toLowerCase();
+        const cleanName = (displayName && typeof displayName === 'string' ? displayName.trim() : '') || cleanEmail.split('@')[0];
+        // Attempt Supabase Auth if cloud project is configured
+        if (supabaseUrl && supabaseKey && !supabaseUrl.includes('your-project')) {
+            try {
+                const { data: authData, error: authError } = yield supabase.auth.signUp({
+                    email: cleanEmail,
+                    password: password,
+                    options: {
+                        data: { display_name: cleanName }
+                    }
+                });
+                if (!authError && authData.user) {
+                    const userId = authData.user.id;
+                    yield supabase.from('users').upsert({
+                        id: userId,
+                        email: cleanEmail,
+                        password_hash: bcryptjs_1.default.hashSync(password, 10),
+                        display_name: cleanName
+                    });
+                    const token = ((_a = authData.session) === null || _a === void 0 ? void 0 : _a.access_token) || generateToken({ id: userId, email: cleanEmail, displayName: cleanName });
+                    return res.status(201).json({
+                        token,
+                        user: { id: userId, email: cleanEmail, displayName: cleanName }
+                    });
+                }
+            }
+            catch (sbErr) {
+                console.warn('Supabase sign-up failed or offline, falling back to local multi-user store:', sbErr);
+            }
+        }
+        // Local in-memory multi-user fallback
+        const exists = localStore.users.some(u => u.email === cleanEmail);
+        if (exists) {
+            return res.status(400).json({ error: 'An account with this email already exists' });
+        }
+        const newUser = {
+            id: `user_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+            email: cleanEmail,
+            passwordHash: bcryptjs_1.default.hashSync(password, 10),
+            displayName: cleanName,
+            createdAt: new Date().toISOString()
+        };
+        localStore.users.push(newUser);
+        persistLocalData();
+        const token = generateToken({ id: newUser.id, email: newUser.email, displayName: newUser.displayName });
+        return res.status(201).json({
+            token,
+            user: { id: newUser.id, email: newUser.email, displayName: newUser.displayName }
+        });
+    }
+    catch (err) {
+        res.status(500).json({ error: (err === null || err === void 0 ? void 0 : err.message) || 'Registration failed' });
+    }
+}));
+// Login existing user
+app.post('/api/auth/login', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a;
+    try {
+        const { email, password } = req.body;
+        if (!email || !password) {
+            return res.status(400).json({ error: 'Email and password are required' });
+        }
+        const cleanEmail = email.trim().toLowerCase();
+        // Attempt Supabase Auth if cloud project is configured
+        if (supabaseUrl && supabaseKey && !supabaseUrl.includes('your-project')) {
+            try {
+                const { data: authData, error: authError } = yield supabase.auth.signInWithPassword({
+                    email: cleanEmail,
+                    password: password
+                });
+                if (!authError && authData.user) {
+                    const userMeta = authData.user.user_metadata || {};
+                    const displayName = userMeta.display_name || cleanEmail.split('@')[0];
+                    const token = ((_a = authData.session) === null || _a === void 0 ? void 0 : _a.access_token) || generateToken({ id: authData.user.id, email: cleanEmail, displayName });
+                    return res.json({
+                        token,
+                        user: { id: authData.user.id, email: cleanEmail, displayName }
+                    });
+                }
+            }
+            catch (sbErr) {
+                console.warn('Supabase login failed or offline, falling back to local multi-user store:', sbErr);
+            }
+        }
+        // Local in-memory multi-user fallback
+        const user = localStore.users.find(u => u.email === cleanEmail);
+        if (!user || !user.passwordHash || !bcryptjs_1.default.compareSync(password, user.passwordHash)) {
+            return res.status(401).json({ error: 'Invalid email or password' });
+        }
+        const token = generateToken({ id: user.id, email: user.email, displayName: user.displayName });
+        return res.json({
+            token,
+            user: { id: user.id, email: user.email, displayName: user.displayName }
+        });
+    }
+    catch (err) {
+        res.status(500).json({ error: (err === null || err === void 0 ? void 0 : err.message) || 'Login failed' });
+    }
+}));
+// Get current authenticated user
+app.get('/api/auth/me', authenticateToken, (req, res) => {
+    const userId = req.user.id;
+    const localUser = localStore.users.find(u => u.id === userId);
+    res.json({
+        user: {
+            id: req.user.id,
+            email: req.user.email,
+            displayName: (localUser === null || localUser === void 0 ? void 0 : localUser.displayName) || req.user.displayName || req.user.email.split('@')[0]
+        }
+    });
+});
+// Guest session initialization
+app.post('/api/auth/guest', (req, res) => {
+    const guestId = `guest_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const guestUser = {
+        id: guestId,
+        email: `${guestId}@guest.local`,
+        passwordHash: '',
+        displayName: 'Guest Learner',
+        createdAt: new Date().toISOString()
+    };
+    localStore.users.push(guestUser);
+    persistLocalData();
+    const token = generateToken({ id: guestUser.id, email: guestUser.email, displayName: guestUser.displayName });
+    res.json({
+        token,
+        user: { id: guestUser.id, email: guestUser.email, displayName: guestUser.displayName, isGuest: true }
+    });
+});
 // Get all users (sanitized, omitting passwords)
 app.get('/api/users', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
@@ -401,6 +708,33 @@ app.get('/api/users', (req, res) => __awaiter(void 0, void 0, void 0, function* 
         // Supabase unavailable, fallback to local store
     }
     res.json(localStore.users.map(u => ({ id: u.id, email: u.email })));
+}));
+// Get all decks (global curriculum + user custom decks)
+app.get('/api/decks', optionalAuthenticateToken, (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a;
+    try {
+        const userId = (_a = req.user) === null || _a === void 0 ? void 0 : _a.id;
+        try {
+            let query = supabase.from('decks').select('*');
+            if (userId) {
+                query = query.or(`is_global.eq.true,user_id.eq.${userId}`);
+            }
+            else {
+                query = query.or('is_global.eq.true,user_id.not.is.null');
+            }
+            const { data, error } = yield query;
+            if (!error && data && data.length > 0) {
+                return res.json(data);
+            }
+        }
+        catch (e) {
+            // Supabase query failed, fallback to local store
+        }
+    }
+    catch (err) {
+        // Fallback to local store
+    }
+    res.json(localStore.decks);
 }));
 // Get all decks for a user
 app.get('/api/decks/:userId', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
@@ -528,45 +862,69 @@ app.get('/api/search-test', (req, res) => {
     }
 });
 // Star a card
-app.post('/api/cards/:cardId/star', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+app.post('/api/cards/:cardId/star', optionalAuthenticateToken, (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a, _b;
     try {
         const { cardId } = req.params;
-        const { userId } = req.body;
+        const userId = ((_a = req.user) === null || _a === void 0 ? void 0 : _a.id) || ((_b = req.body) === null || _b === void 0 ? void 0 : _b.userId) || 'demo-user-id';
         try {
             yield supabase.from('starred_cards').insert([{ card_id: cardId, user_id: userId }]);
         }
         catch (e) {
             // Fallback to local
         }
-        localStore.starredCardIds.add(cardId);
-        res.status(201).json({ message: 'Card starred successfully' });
+        getStarredSetForUser(userId).add(cardId);
+        persistLocalData();
+        res.status(201).json({ message: 'Card starred successfully', cardId, userId });
     }
     catch (error) {
         res.status(500).json({ error: (error === null || error === void 0 ? void 0 : error.message) || 'An error occurred' });
     }
 }));
 // Unstar a card
-app.delete('/api/cards/:cardId/star', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+app.delete('/api/cards/:cardId/star', optionalAuthenticateToken, (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a, _b, _c;
     try {
         const { cardId } = req.params;
-        const { userId } = req.body;
+        const userId = ((_a = req.user) === null || _a === void 0 ? void 0 : _a.id) || ((_b = req.body) === null || _b === void 0 ? void 0 : _b.userId) || ((_c = req.query) === null || _c === void 0 ? void 0 : _c.userId) || 'demo-user-id';
         try {
             yield supabase.from('starred_cards').delete().eq('card_id', cardId).eq('user_id', userId);
         }
         catch (e) {
             // Fallback
         }
-        localStore.starredCardIds.delete(cardId);
-        res.status(200).json({ message: 'Card unstarred successfully' });
+        getStarredSetForUser(userId).delete(cardId);
+        persistLocalData();
+        res.status(200).json({ message: 'Card unstarred successfully', cardId, userId });
     }
     catch (error) {
         res.status(500).json({ error: (error === null || error === void 0 ? void 0 : error.message) || 'An error occurred' });
     }
 }));
 // Get all starred cards for a user
-app.get('/api/users/:userId/starred-cards', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+app.get('/api/users/:userId/starred-cards', optionalAuthenticateToken, (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a;
     try {
-        const cardIds = Array.from(localStore.starredCardIds);
+        const targetUserId = req.params.userId === 'me' ? (((_a = req.user) === null || _a === void 0 ? void 0 : _a.id) || 'demo-user-id') : req.params.userId;
+        try {
+            const { data, error } = yield supabase
+                .from('starred_cards')
+                .select('card_id, cards(*)')
+                .eq('user_id', targetUserId);
+            if (!error && data && data.length > 0) {
+                const cardsWithDecks = data
+                    .filter((item) => item.cards)
+                    .map((item) => (Object.assign(Object.assign({}, item.cards), { video_url: formatVideoUrl(item.cards.video_url) })));
+                if (cardsWithDecks.length > 0) {
+                    return res.json({ cards: cardsWithDecks });
+                }
+            }
+        }
+        catch (e) {
+            // Fallback to local store
+        }
+        const userStarredSet = getStarredSetForUser(targetUserId);
+        const cardIds = Array.from(userStarredSet);
         const cardsWithDecks = localStore.cards
             .filter(card => cardIds.includes(card.id))
             .map(card => {
@@ -580,8 +938,23 @@ app.get('/api/users/:userId/starred-cards', (req, res) => __awaiter(void 0, void
     }
 }));
 // Get all starred card IDs for a user
-app.get('/api/users/:userId/starred-card-ids', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    res.json({ cardIds: Array.from(localStore.starredCardIds) });
+app.get('/api/users/:userId/starred-card-ids', optionalAuthenticateToken, (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a;
+    const targetUserId = req.params.userId === 'me' ? (((_a = req.user) === null || _a === void 0 ? void 0 : _a.id) || 'demo-user-id') : req.params.userId;
+    try {
+        const { data, error } = yield supabase
+            .from('starred_cards')
+            .select('card_id')
+            .eq('user_id', targetUserId);
+        if (!error && data && data.length > 0) {
+            return res.json({ cardIds: data.map((d) => d.card_id) });
+        }
+    }
+    catch (e) {
+        // Fallback to local store
+    }
+    const userStarredSet = getStarredSetForUser(targetUserId);
+    res.json({ cardIds: Array.from(userStarredSet) });
 }));
 // --- Practice Feedback API Endpoints ---
 // In-memory fallback stores
@@ -666,24 +1039,62 @@ app.get('/api/practice/specs/:signId', (req, res) => {
     }
     res.json(spec);
 });
-// GET user practice preferences (dominant hand)
-app.get('/api/users/:userId/preferences', (req, res) => {
-    const { userId } = req.params;
-    const prefs = userPreferencesStore.get(userId) || { dominantHand: 'right' };
-    res.json(prefs);
-});
-// POST user practice preferences
-app.post('/api/users/:userId/preferences', (req, res) => {
-    const { userId } = req.params;
-    const { dominantHand } = req.body;
-    const validHand = dominantHand === 'left' ? 'left' : 'right';
-    userPreferencesStore.set(userId, { dominantHand: validHand });
-    res.json({ success: true, dominantHand: validHand });
-});
-// POST a practice attempt summary (no raw video)
-app.post('/api/practice/attempts', (req, res) => {
+// GET user practice preferences (dominant hand & sound)
+app.get('/api/users/:userId/preferences', optionalAuthenticateToken, (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a;
+    const targetUserId = req.params.userId === 'me' ? (((_a = req.user) === null || _a === void 0 ? void 0 : _a.id) || 'demo-user-id') : req.params.userId;
     try {
-        const { userId = 'demo-user-id', signId, overallScore, dominantHand, durationMs, dimensionResults } = req.body;
+        const { data, error } = yield supabase
+            .from('user_preferences')
+            .select('*')
+            .eq('user_id', targetUserId)
+            .single();
+        if (!error && data) {
+            return res.json({
+                dominantHand: data.dominant_hand || 'right',
+                soundEnabled: Boolean(data.sound_enabled)
+            });
+        }
+    }
+    catch (e) {
+        // Fallback to local store
+    }
+    const prefs = localStore.userPreferences.get(targetUserId) || userPreferencesStore.get(targetUserId) || { dominantHand: 'right', soundEnabled: false };
+    res.json(prefs);
+}));
+// POST user practice preferences
+app.post('/api/users/:userId/preferences', optionalAuthenticateToken, (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a;
+    const targetUserId = req.params.userId === 'me' ? (((_a = req.user) === null || _a === void 0 ? void 0 : _a.id) || 'demo-user-id') : req.params.userId;
+    const { dominantHand, soundEnabled } = req.body;
+    const validHand = dominantHand === 'left' ? 'left' : 'right';
+    const existing = localStore.userPreferences.get(targetUserId) || { dominantHand: 'right', soundEnabled: false };
+    const updated = {
+        dominantHand: validHand,
+        soundEnabled: typeof soundEnabled === 'boolean' ? soundEnabled : existing.soundEnabled
+    };
+    try {
+        yield supabase.from('user_preferences').upsert({
+            user_id: targetUserId,
+            dominant_hand: updated.dominantHand,
+            sound_enabled: updated.soundEnabled,
+            updated_at: new Date().toISOString()
+        });
+    }
+    catch (e) {
+        // Fallback to local store
+    }
+    localStore.userPreferences.set(targetUserId, updated);
+    userPreferencesStore.set(targetUserId, { dominantHand: validHand });
+    persistLocalData();
+    res.json(Object.assign({ success: true }, updated));
+}));
+// POST a practice attempt summary (no raw video)
+app.post('/api/practice/attempts', optionalAuthenticateToken, (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a, _b;
+    try {
+        const userId = ((_a = req.user) === null || _a === void 0 ? void 0 : _a.id) || ((_b = req.body) === null || _b === void 0 ? void 0 : _b.userId) || 'demo-user-id';
+        const { signId, overallScore, dominantHand, durationMs, dimensionResults } = req.body;
         const attempt = {
             id: `attempt_${Date.now()}`,
             userId,
@@ -694,21 +1105,116 @@ app.post('/api/practice/attempts', (req, res) => {
             dimensionResults: dimensionResults || {},
             createdAt: new Date().toISOString()
         };
+        try {
+            yield supabase.from('practice_sessions').insert([{
+                    user_id: userId,
+                    sign_attempted: signId,
+                    ai_score: attempt.overallScore,
+                    landmark_data: dimensionResults,
+                    created_at: attempt.createdAt
+                }]);
+        }
+        catch (e) {
+            // Fallback
+        }
         const existing = practiceAttemptsStore.get(userId) || [];
         existing.push(attempt);
         practiceAttemptsStore.set(userId, existing);
+        localStore.practiceAttempts.set(userId, existing);
+        persistLocalData();
         res.status(201).json({ success: true, attempt });
     }
     catch (error) {
         res.status(500).json({ error: (error === null || error === void 0 ? void 0 : error.message) || 'Failed to save practice attempt' });
     }
-});
+}));
 // GET past practice attempts for a user
-app.get('/api/users/:userId/practice-attempts', (req, res) => {
-    const { userId } = req.params;
-    const attempts = practiceAttemptsStore.get(userId) || [];
+app.get('/api/users/:userId/practice-attempts', optionalAuthenticateToken, (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a;
+    const targetUserId = req.params.userId === 'me' ? (((_a = req.user) === null || _a === void 0 ? void 0 : _a.id) || 'demo-user-id') : req.params.userId;
+    try {
+        const { data, error } = yield supabase
+            .from('practice_sessions')
+            .select('*')
+            .eq('user_id', targetUserId)
+            .order('created_at', { ascending: false });
+        if (!error && data && data.length > 0) {
+            const attempts = data.map((item) => ({
+                id: item.id,
+                userId: item.user_id,
+                signId: item.sign_attempted,
+                overallScore: Number(item.ai_score) || 0,
+                dimensionResults: item.landmark_data || {},
+                createdAt: item.created_at
+            }));
+            return res.json({ attempts });
+        }
+    }
+    catch (e) {
+        // Fallback
+    }
+    const attempts = practiceAttemptsStore.get(targetUserId) || localStore.practiceAttempts.get(targetUserId) || [];
     res.json({ attempts });
-});
+}));
+// Save test quiz result
+app.post('/api/test/results', optionalAuthenticateToken, (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a, _b;
+    try {
+        const userId = ((_a = req.user) === null || _a === void 0 ? void 0 : _a.id) || ((_b = req.body) === null || _b === void 0 ? void 0 : _b.userId) || 'demo-user-id';
+        const { deckId, score, totalQuestions, correctCount } = req.body;
+        const record = {
+            id: `result_${Date.now()}`,
+            userId,
+            deckId: deckId || 'all-decks',
+            score: Number(score) || 0,
+            totalQuestions: Number(totalQuestions) || 0,
+            correctCount: Number(correctCount) || 0,
+            completedAt: new Date().toISOString()
+        };
+        try {
+            yield supabase.from('test_results').insert([{
+                    user_id: userId,
+                    deck_id: record.deckId,
+                    score: record.score,
+                    total_questions: record.totalQuestions,
+                    correct_count: record.correctCount,
+                    completed_at: record.completedAt
+                }]);
+        }
+        catch (e) {
+            // Fallback
+        }
+        if (!localStore.testResults.has(userId)) {
+            localStore.testResults.set(userId, []);
+        }
+        localStore.testResults.get(userId).push(record);
+        persistLocalData();
+        res.status(201).json({ success: true, result: record });
+    }
+    catch (error) {
+        res.status(500).json({ error: (error === null || error === void 0 ? void 0 : error.message) || 'Failed to save test result' });
+    }
+}));
+// GET past test results for a user
+app.get('/api/users/:userId/test-results', optionalAuthenticateToken, (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a;
+    const targetUserId = req.params.userId === 'me' ? (((_a = req.user) === null || _a === void 0 ? void 0 : _a.id) || 'demo-user-id') : req.params.userId;
+    try {
+        const { data, error } = yield supabase
+            .from('test_results')
+            .select('*')
+            .eq('user_id', targetUserId)
+            .order('completed_at', { ascending: false });
+        if (!error && data && data.length > 0) {
+            return res.json({ results: data });
+        }
+    }
+    catch (e) {
+        // Fallback
+    }
+    const results = localStore.testResults.get(targetUserId) || [];
+    res.json({ results });
+}));
 // Main function to start the server
 const startServer = () => __awaiter(void 0, void 0, void 0, function* () {
     try {

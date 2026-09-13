@@ -42,3 +42,8 @@ Thumbs.db
 # Security Audit Reports
 SECURITY_AUDIT.md
 **/SECURITY_AUDIT.md
+
+# Local persistent data
+data/
+**/data/
+
